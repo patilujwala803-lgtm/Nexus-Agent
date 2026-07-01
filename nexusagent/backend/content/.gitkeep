@@ -1,0 +1,9 @@
+# content/
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent-generated content and deliverables will be cached here in Phase 2+.
+#
+# Examples:
+#   research-<bountyId>.json  — raw research data fetched by ResearchAgent
+#   draft-<bountyId>.md       — WriterAgent drafts
+#   submission-<bountyId>.md  — Final submission content
+# ─────────────────────────────────────────────────────────────────────────────

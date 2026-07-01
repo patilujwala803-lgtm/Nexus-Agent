@@ -1,0 +1,10 @@
+# agents/
+# ─────────────────────────────────────────────────────────────────────────────
+# AI agent implementations will live here in Phase 2.
+#
+# Planned agents:
+#   masterAgent.ts    — orchestrates the bounty lifecycle
+#   researchAgent.ts  — fetches information, handles 402 paywalls via nanopay
+#   writerAgent.ts    — composes and formats deliverables
+#   judgeAgent.ts     — evaluates submissions and declares winners
+# ─────────────────────────────────────────────────────────────────────────────
