@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { Task, TaskStatus } from "./types.js";
+import { saveTask, updateTaskFields } from "../firebase/taskRepository.js";
 
 console.log("📂 [taskQueue] Module loading started...");
 
@@ -39,10 +40,19 @@ export function createTask(data: Omit<Task,
     qualityScore: null,
     escrowTxHash: null,
     paymentTxHash: null,
-    hiringAgentId: data.hiringAgentId
+    hiringAgentId: data.hiringAgentId,
+    taskVariant: data.taskVariant ?? "normal",
+    guildName: data.guildName ?? null,
+    isAppeal: data.isAppeal ?? false,
+    subcontractedTo: data.subcontractedTo ?? null,
+    loanTriggered: data.loanTriggered ?? false,
+    educationTriggered: data.educationTriggered ?? false
   };
 
   taskQueue.set(task.id, task);
+
+  // Fire-and-forget Firestore save
+  saveTask(task).catch(console.error);
 
   console.log(`➕ [createTask] Finished creation of task: "${task.title}" with ID: ${task.id}`);
   return task;
@@ -61,6 +71,8 @@ export function updateTask(id: string, updates: Partial<Task>): void {
   if (task) {
     Object.assign(task, updates);
     console.log(`🔄 [updateTask] Finished update for ID: ${id}. New status: ${task.status}`);
+    // Fire-and-forget Firestore update
+    updateTaskFields(id, updates).catch(console.error);
   } else {
     console.log(`⚠️ [updateTask] Finished update: Task with ID: ${id} not found.`);
   }

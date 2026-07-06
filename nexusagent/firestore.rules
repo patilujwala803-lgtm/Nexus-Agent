@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Agents collection ─────────────────────────────────────────────────────
+    // Public read (for the /agents dashboard page), write only from backend
+    match /agents/{agentId} {
+      allow read: if true;
+      allow write: if false; // Backend writes via Admin SDK (bypasses rules)
+    }
+
+    // ── Tasks collection ──────────────────────────────────────────────────────
+    // Public read (for the economy canvas), write only from backend
+    match /tasks/{taskId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Transactions collection ───────────────────────────────────────────────
+    // Public read (for transparency/audit trail), write only from backend
+    match /transactions/{txId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Economy stats (live snapshot) ─────────────────────────────────────────
+    match /economy/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Guilds ────────────────────────────────────────────────────────────────
+    match /guilds/{guildId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Loans ─────────────────────────────────────────────────────────────────
+    match /loans/{loanId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Court events ──────────────────────────────────────────────────────────
+    match /court_events/{eventId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Deny all other collections ────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

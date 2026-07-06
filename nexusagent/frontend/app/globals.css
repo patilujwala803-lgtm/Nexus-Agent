@@ -1,43 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap');
 @import "tailwindcss";
 
-/* ── Color tokens — light theme ─────────────────────────────────────────────── */
+/* ── Color tokens — NexusAgent Design System ─────────────────────────────── */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --accent-violet: #7c3aed;
-  --accent-blue: #2563eb;
-  --accent-emerald: #059669;
-  --accent-amber: #d97706;
+  --background: #f0f4ff;
+  --foreground: #1e1b4b;
+  --accent-violet: #6366f1;
+  --accent-violet-dark: #4338ca;
+  --accent-blue: #3b82f6;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+  --glass-bg: rgba(255,255,255,0.65);
+  --glass-border: rgba(255,255,255,0.9);
+  --glass-shadow: 0 4px 24px rgba(99,102,241,0.10), 0 1px 2px rgba(0,0,0,0.04);
+  --card-shadow: 0 2px 16px rgba(99,102,241,0.08);
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Slide-in animation for feed entries ───────────────────────────────────── */
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ── Font utilities ─────────────────────────────────────────────────────────── */
+.font-syne {
+  font-family: 'Syne', sans-serif;
 }
 
-.animate-slideInUp {
-  animation: slideInUp 0.2s ease-out both;
+/* ── Glassmorphism Utilities ─────────────────────────────────────────────── */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-panel {
+  background: rgba(255,255,255,0.5);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.8);
+}
+
+.glass-dark {
+  background: rgba(30,27,75,0.7);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(99,102,241,0.3);
+}
+
+/* ── Canvas Background ──────────────────────────────────────────────────── */
+.canvas-bg {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(99,102,241,0.06) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(139,92,246,0.06) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(16,185,129,0.04) 0%, transparent 70%),
+    #f0f4ff;
+}
+
+.canvas-dot-grid {
+  background-image: radial-gradient(rgba(99,102,241,0.3) 1px, transparent 1px);
+}
+
+/* ── Flow Diagram Lines ──────────────────────────────────────────────────── */
+.flow-line-animated {
+  stroke-dasharray: 6 4;
+  animation: dashMove 0.8s linear infinite;
+}
+
+@keyframes dashMove {
+  to { stroke-dashoffset: -10; }
+}
+
+/* ── Node / Card Animations ─────────────────────────────────────────────── */
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.3); }
+  50%       { box-shadow: 0 0 0 8px rgba(99,102,241,0); }
+}
+
+@keyframes greenPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
+  50%       { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
+}
+
+@keyframes amberPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
+}
+
+@keyframes travelCircle {
+  0%   { offset-distance: 0%;   opacity: 1; }
+  80%  { offset-distance: 80%;  opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+@keyframes circleBounce {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.1); }
+}
+
+@keyframes spinLoader {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes announceBanner {
+  0%   { transform: translateX(120%); opacity: 0; }
+  8%   { transform: translateX(0);    opacity: 1; }
+  85%  { transform: translateX(0);    opacity: 1; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+
+@keyframes countUp {
+  from { transform: translateY(4px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* ── Animation utility classes ──────────────────────────────────────────── */
+.animate-slideInUp    { animation: slideInUp 0.25s cubic-bezier(.22,1,.36,1) both; }
+.animate-slideInRight { animation: slideInRight 0.3s cubic-bezier(.22,1,.36,1) both; }
+.animate-fadeIn       { animation: fadeIn 0.2s ease both; }
+.animate-pulseGlow    { animation: pulseGlow 1.8s ease-in-out infinite; }
+.animate-greenPulse   { animation: greenPulse 1.5s ease-in-out infinite; }
+.animate-amberPulse   { animation: amberPulse 1.8s ease-in-out infinite; }
+.animate-countUp      { animation: countUp 0.3s cubic-bezier(.22,1,.36,1) both; }
+
+/* ── Sidebar animations ──────────────────────────────────────────────────── */
+.sidebar-enter {
+  transform: translateX(100%);
+  opacity: 0;
+}
+.sidebar-active {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 0.32s cubic-bezier(.22,1,.36,1), opacity 0.25s ease;
+}
+.sidebar-exit {
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.2s ease;
 }
 
 /* ── Gradient text utility ─────────────────────────────────────────────────── */
 .gradient-text {
-  background: linear-gradient(135deg, var(--accent-violet), var(--accent-blue), var(--accent-emerald));
+  background: linear-gradient(135deg, var(--accent-violet), var(--accent-blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-gold {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -46,27 +182,76 @@ body {
 /* ── Custom scrollbar ──────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.5); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.8); }
+::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.5); }
 
 /* ── Line clamp utilities ──────────────────────────────────────────────────── */
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .line-clamp-4 {
   display: -webkit-box;
   -webkit-line-clamp: 4;
+  line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-/* ── Glassmorphism card ────────────────────────────────────────────────────── */
-.glass-card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+/* ── Traveling circle glow trail ──────────────────────────────────────────── */
+.circle-trail {
+  filter: blur(1px) drop-shadow(0 0 4px currentColor);
+}
+
+/* ── Active task node pulse ───────────────────────────────────────────────── */
+.bid-node-active {
+  animation: pulseGlow 1.6s ease-in-out infinite;
+}
+
+/* ── Task Card gradient borders by variant ─────────────────────────────────── */
+.task-card-normal   { border-left: 3px solid #6366f1; }
+.task-card-guild    { border-left: 3px solid #10b981; }
+.task-card-court    { border-left: 3px solid #ef4444; }
+.task-card-subcontract { border-left: 3px solid #f59e0b; }
+.task-card-loan     { border-left: 3px solid #8b5cf6; }
+.task-card-education { border-left: 3px solid #3b82f6; }
+
+/* ── Announcement overlay ─────────────────────────────────────────────────── */
+.announcement-enter {
+  animation: announceBanner 4.5s cubic-bezier(.22,1,.36,1) forwards;
+}
+
+@keyframes announceBanner {
+  0%   { opacity: 0; transform: translateX(40px) scale(0.95); }
+  8%   { opacity: 1; transform: translateX(0)   scale(1); }
+  80%  { opacity: 1; transform: translateX(0)   scale(1); }
+  100% { opacity: 0; transform: translateX(20px) scale(0.97); }
+}
+
+/* ── Toast slideInUp ──────────────────────────────────────────────────────── */
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slideInUp {
+  animation: slideInUp 0.25s ease-out forwards;
+}
+
+/* ── Canvas background variable ───────────────────────────────────────────── */
+:root {
+  --bg-canvas: #f0f4ff;
+}
+
+/* ── Node pulse animations ────────────────────────────────────────────────── */
+@keyframes greenPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.3); }
+  50%       { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+}
+
+@keyframes amberPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.3); }
+  50%       { box-shadow: 0 0 0 6px rgba(245,158,11,0); }
 }

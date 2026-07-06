@@ -45,6 +45,10 @@ import { registerDataAnalystEmitter } from './agents/dataAnalystAgent.js';
 import { registerFactCheckerEmitter } from './agents/factCheckerAgent.js';
 import { registerTreasuryEmitter } from './agents/treasuryAgent.js';
 import { registerReputationEmitter, getLeaderboard } from './agents/reputationAgent.js';
+import { getAllAgents } from './src/economy/agentRegistry.js';
+import { syncCircleBalances } from './src/economy/balanceSync.js';
+import { saveAllAgents } from './src/firebase/agentRepository.js';
+
 
 // ── App setup ─────────────────────────────────────────────────────────────────
 const app  = express();
@@ -62,10 +66,25 @@ const io = new SocketIOServer(httpServer, {
 
 io.on('connection', (socket) => {
   console.log(`🔌 Frontend connected: ${socket.id}`);
+
+  // Bug Fix 2: Emit full state on every new connection so frontend can resync
+  try {
+    const agents = getAllAgents();
+    socket.emit('economy:full_state', {
+      activeTasks: [],
+      agents,
+      stats: null,
+      isRunning: false
+    });
+  } catch (_e) {
+    // Non-critical if fails on startup
+  }
+
   socket.on('disconnect', () => {
     console.log(`🔌 Frontend disconnected: ${socket.id}`);
   });
 });
+
 
 /**
  * emitAgentActivity
@@ -182,11 +201,23 @@ app.get('/agent/research', async (req: Request, res: Response, next: NextFunctio
  * GET /agent/status
  * Live USDC balances for all 7 wallet-holding agents.
  */
-app.get('/agent/status', async (_req: Request, res: Response, next: NextFunction) => {
+app.get('/agent/status', async (_req: Request, res: Response) => {
   try {
+    const agents = getAllAgents();
+    const mapped = agents.map((ag) => ({
+      agentName: ag.name,
+      instanceId: ag.instanceId,
+      walletId: ag.walletId,
+      address: ag.walletAddress,
+      balance: ag.usdcBalance,
+      role: ag.role,
+      blockchain: 'ARC-TESTNET',
+    }));
+    res.json({ agents: mapped, timestamp: new Date().toISOString() });
+  } catch {
     const statuses = await getAgentStatus();
     res.json({ agents: statuses, timestamp: new Date().toISOString() });
-  } catch (err) { next(err); }
+  }
 });
 
 /**
@@ -312,6 +343,24 @@ async function main() {
     console.log(`   GET  http://localhost:${PORT}/agent/leaderboard`);
     console.log(`   GET  http://localhost:${PORT}/treasury/status`);
   });
+
+  // Sync real Circle balances into registry (non-blocking)
+  syncCircleBalances().catch((err) => {
+    console.warn('⚠️  Balance sync failed (non-critical):', (err as Error).message);
+  });
+
+  // 🔥 Sync initial agent state to Firebase (fire-and-forget)
+  const allStartupAgents = getAllAgents();
+  saveAllAgents(allStartupAgents)
+    .then(() => console.log('🔥 Agent registry synced to Firebase'))
+    .catch(console.error);
+
+  // Section 2: Periodic balance sync every 60 seconds
+  setInterval(() => {
+    syncCircleBalances().catch((err) => {
+      console.warn('⚠️  Periodic balance sync failed:', (err as Error).message);
+    });
+  }, 60000);
 }
 
 main().catch((err) => {

@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import { Agent, Bid, Task, BidStatus } from "./types.js";
-import { updateAgent, getAgent } from "./agentRegistry.js";
-import { updateTask } from "./taskQueue.js";
+import { updateAgent, getAgent, pendingLocks } from "./agentRegistry.js";
+import { updateTask, getAllTasks } from "./taskQueue.js";
+import { askClaude } from "../llm/claudeClient.js";
 
 console.log("🪙 [biddingEngine] Module loading started (Phase 7)...");
 
@@ -11,7 +12,21 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export function generateBid(agent: Agent, task: Task): Bid {
   console.log(`🎲 [generateBid] Starting bid generation for agent: ${agent.name} on task: "${task.title}"...`);
-  
+
+  // ── Consecutive Demand Surge Check ──
+  let isSurge = false;
+  try {
+    const tasks = getAllTasks();
+    if (tasks.length > 1) {
+      const prevTask = tasks[tasks.length - 2];
+      if (prevTask && prevTask.requiredSkill === task.requiredSkill) {
+        isSurge = true;
+      }
+    }
+  } catch (err) {
+    // fallback
+  }
+
   // Base multiplier based on strategy
   let multiplier = 0.88;
   switch (agent.bidStrategy) {
@@ -26,28 +41,34 @@ export function generateBid(agent: Agent, task: Task): Bid {
       break;
   }
 
-  // ── Dynamic Pricing Logic (Phase 7) ─────────────────────────────────────────
-  if (agent.consecutiveIdleCycles > 2) {
-    // Reduce price by 5% per cycle after being idle for 2 consecutive cycles
+  if (isSurge) {
+    multiplier = multiplier * 1.5;
+    console.log(`📈 [generateBid] Surge Pricing (1.5x) triggered for ${agent.name} on consecutive skill: ${task.requiredSkill}`);
+  }
+
+  if (agent.consecutiveIdleCycles >= 3) {
+    multiplier = multiplier * 0.75;
+    console.log(`📉 [generateBid] Dynamic Pricing underemployment discount (25%) for ${agent.name}`);
+  } else if (agent.consecutiveIdleCycles > 2) {
     const discount = (agent.consecutiveIdleCycles - 2) * 0.05;
     multiplier = Math.max(0.70, multiplier - discount);
-    console.log(`📉 [generateBid] Dynamic Pricing discount: agent ${agent.name} is unemployed for ${agent.consecutiveIdleCycles} cycles. New multiplier: ${multiplier}`);
   } else if (agent.consecutiveWins > 1) {
-    // Increase price by 2% per consecutive win
     const premiumBoost = agent.consecutiveWins * 0.02;
     multiplier = Math.min(0.98, multiplier + premiumBoost);
-    console.log(`📈 [generateBid] Dynamic Pricing premium boost: agent ${agent.name} has ${agent.consecutiveWins} consecutive wins. New multiplier: ${multiplier}`);
   }
 
   let bidAmountUSDC = task.budgetUSDC * multiplier;
 
-  // Clamp to minimum 0.001 USDC
-  if (bidAmountUSDC < 0.001) {
-    bidAmountUSDC = 0.001;
+  if (bidAmountUSDC > task.budgetUSDC) {
+    bidAmountUSDC = task.budgetUSDC;
+  }
+  if (bidAmountUSDC < 1.00) {
+    bidAmountUSDC = 1.00;
   }
   bidAmountUSDC = parseFloat(bidAmountUSDC.toFixed(6));
 
-  const estimatedTimeMs = Math.floor(Math.random() * 5000 + 3000); // 3-8 seconds
+  const estimatedTimeMs = Math.floor(Math.random() * 5000 + 3000);
+  // Claude-generated message (async — we build synchronously for now, Claude is called async in round)
   const message = `Hi, I'm ${agent.name}. I'll complete '${task.title}' for ${bidAmountUSDC} USDC. Reputation: ${agent.reputation}/100. Jobs done: ${agent.jobsCompleted}. I can deliver in ~${estimatedTimeMs}ms.`;
 
   const bid: Bid = {
@@ -66,6 +87,7 @@ export function generateBid(agent: Agent, task: Task): Bid {
   console.log(`🎲 [generateBid] Finished bid generation for agent: ${agent.name}. Bid Amount: ${bidAmountUSDC} USDC`);
   return bid;
 }
+
 
 // ── Bid Scoring ───────────────────────────────────────────────────────────────
 
@@ -96,15 +118,23 @@ export async function runBiddingRound(
   }
 
   // Step 2: For each eligible agent, generate a bid.
+  // Add to pendingLocks before bidding to prevent race conditions (Bug Fix 3)
   const bids: Bid[] = [];
   for (const agent of eligibleAgents) {
+    // Skip if already locked by another concurrent task
+    if (pendingLocks.has(agent.instanceId)) {
+      console.log(`🔒 [runBiddingRound] ${agent.instanceId} is in pending lock, skipping bid.`);
+      continue;
+    }
+    pendingLocks.add(agent.instanceId);
+
     const bid = generateBid(agent, task);
     bids.push(bid);
-    
+
     // Add bid to task.bids
     const currentBids = [...task.bids, bid];
     updateTask(task.id, { bids: currentBids });
-    task.bids = currentBids; // local sync for logic below
+    task.bids = currentBids;
 
     // Emit socket event "economy:bid_placed"
     io.emit("economy:bid_placed", {
@@ -115,8 +145,9 @@ export async function runBiddingRound(
     });
 
     console.log(`📨 [runBiddingRound] ${agent.name} placed bid of ${bid.bidAmountUSDC} USDC for task: ${task.title}`);
-    await sleep(300);
+    await sleep(800);
   }
+
 
   // Step 3: Score all bids. Find highest scoring bid.
   let scoredBids = bids.map(bid => {
@@ -217,6 +248,11 @@ export async function runBiddingRound(
     taskId: task.id,
     rejectedAgentIds
   });
+
+  // Release all pending locks for agents in this round (Bug Fix 3)
+  for (const agent of eligibleAgents) {
+    pendingLocks.delete(agent.instanceId);
+  }
 
   console.log(`🏁 [runBiddingRound] Finished round: Winner is ${winnerRecord.agent.name} (${winnerId}) at price: ${finalPrice} USDC.`);
   return { winnerId, finalPrice };

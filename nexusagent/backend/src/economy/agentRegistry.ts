@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from 'url';
 import { Agent, AgentRole, BidStrategy, AgentStatus } from "./types.js";
+import { updateAgentFields } from "../firebase/agentRepository.js";
 
 console.log("💾 [agentRegistry] Module loading started (Phase 7 Extension)...");
 
@@ -71,7 +72,9 @@ function createAgentRecord(params: {
     consecutiveWins: 0,
     loanBalance: 0,
     loanInterestRate: 0,
-    qualityOffset: 0
+    qualityOffset: 0,
+    certifications: [],
+    isHighDefaultRisk: false
   };
   console.log(`🆕 [createAgentRecord] Creating agent record for ${params.instanceId} finished (wallet: ${walletAddress ? "linked" : "none"}).`);
   return record;
@@ -86,7 +89,7 @@ for (let i = 1; i <= 3; i++) {
     name: `Hiring Agent #${i}`,
     role: "meta",
     skills: ["hiring", "orchestration"],
-    usdcBalance: 0.10,
+    usdcBalance: 10.00,
     bidStrategy: "standard",
     poolType: "hiring"
   });
@@ -100,7 +103,7 @@ for (let i = 1; i <= 3; i++) {
     name: `Broker #${i}`,
     role: "finance",
     skills: ["brokering", "marketplace"],
-    usdcBalance: 0.10,
+    usdcBalance: 10.00,
     bidStrategy: "standard",
     poolType: "broker"
   });
@@ -114,7 +117,7 @@ for (let i = 1; i <= 3; i++) {
     name: `Escrow #${i}`,
     role: "finance",
     skills: ["escrow", "holding"],
-    usdcBalance: 0.20,
+    usdcBalance: 20.00,
     bidStrategy: "standard",
     poolType: "escrow"
   });
@@ -128,7 +131,7 @@ for (let i = 1; i <= 2; i++) {
     name: `Treasury #${i}`,
     role: "finance",
     skills: ["treasury", "budget"],
-    usdcBalance: 0.50,
+    usdcBalance: 50.00,
     bidStrategy: "standard",
     poolType: "treasury"
   });
@@ -142,7 +145,7 @@ for (let i = 1; i <= 2; i++) {
     name: `Judge #${i}`,
     role: "meta",
     skills: ["judging", "evaluation", "scoring"],
-    usdcBalance: 0.10,
+    usdcBalance: 10.00,
     bidStrategy: "premium",
     poolType: "judge"
   });
@@ -156,7 +159,7 @@ for (let i = 1; i <= 2; i++) {
     name: `Bank Agent #${i}`,
     role: "finance",
     skills: ["lending", "credit"],
-    usdcBalance: 1.00,
+    usdcBalance: 100.00,
     bidStrategy: "standard",
     poolType: "bank"
   });
@@ -169,29 +172,81 @@ const guildCoordinator = createAgentRecord({
   name: "Guild Coordinator",
   role: "meta",
   skills: ["guild-coordination"],
-  usdcBalance: 0.10,
+  usdcBalance: 10.00,
   bidStrategy: "standard",
   poolType: "guild"
 });
 agentRegistry.set(guildCoordinator.instanceId, guildCoordinator);
 
-// Specialist Worker Agents (15 instances)
-const specialistsData = [
-  { instanceId: "writer-agent", name: "Writer", role: "producer" as AgentRole, skills: ["writing", "storytelling", "blog-posts", "creative"], bidStrategy: "standard" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "researcher-agent", name: "Researcher", role: "producer" as AgentRole, skills: ["research", "summarization", "fact-finding"], bidStrategy: "standard" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "data-analyst-agent", name: "Data Analyst", role: "producer" as AgentRole, skills: ["data", "statistics", "market-research", "analysis"], bidStrategy: "premium" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "coder-agent", name: "Coder", role: "producer" as AgentRole, skills: ["code", "programming", "scripts", "automation"], bidStrategy: "premium" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "translator-agent", name: "Translator", role: "producer" as AgentRole, skills: ["translation", "localization", "multilingual"], bidStrategy: "aggressive" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "summarizer-agent", name: "Summarizer", role: "producer" as AgentRole, skills: ["summarization", "condensing", "tldr"], bidStrategy: "aggressive" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "copywriter-agent", name: "Copywriter", role: "producer" as AgentRole, skills: ["copywriting", "marketing", "ads", "persuasion"], bidStrategy: "standard" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "seo-agent", name: "SEO Specialist", role: "producer" as AgentRole, skills: ["seo", "keywords", "optimization", "search"], bidStrategy: "aggressive" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "illustrator-agent", name: "Text Illustrator", role: "producer" as AgentRole, skills: ["descriptions", "visual-writing", "imagery"], bidStrategy: "standard" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "editor-agent", name: "Editor", role: "verifier" as AgentRole, skills: ["editing", "proofreading", "grammar", "polish"], bidStrategy: "standard" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "factchecker-agent", name: "Fact Checker", role: "verifier" as AgentRole, skills: ["fact-checking", "verification", "accuracy"], bidStrategy: "premium" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "qa-agent", name: "QA Tester", role: "verifier" as AgentRole, skills: ["testing", "quality-assurance", "review"], bidStrategy: "standard" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "compliance-agent", name: "Compliance Checker", role: "verifier" as AgentRole, skills: ["compliance", "legal", "policy"], bidStrategy: "premium" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "negotiator-agent", name: "Negotiator", role: "finance" as AgentRole, skills: ["negotiation", "pricing", "counter-offer"], bidStrategy: "aggressive" as BidStrategy, usdcBalance: 0.05 },
-  { instanceId: "reputation-agent", name: "Reputation Tracker", role: "meta" as AgentRole, skills: ["reputation", "leaderboard", "scoring"], bidStrategy: "standard" as BidStrategy, usdcBalance: 0.05 }
+// Specialist Worker Agents (Expanded Roster with 2-3 instances per skill)
+const specialistsData: Array<{
+  instanceId: string;
+  name: string;
+  role: AgentRole;
+  skills: string[];
+  bidStrategy: BidStrategy;
+  usdcBalance: number;
+}> = [
+  // WRITERS (3)
+  { instanceId: "writer-alex", name: "Alex (Writer)", role: "producer", skills: ["writing", "storytelling", "blog-posts", "creative"], bidStrategy: "standard", usdcBalance: 0.05 },
+  { instanceId: "writer-maya", name: "Maya (Writer)", role: "producer", skills: ["writing", "storytelling", "blog-posts", "creative"], bidStrategy: "premium", usdcBalance: 0.05 },
+  { instanceId: "writer-sam", name: "Sam (Writer)", role: "producer", skills: ["writing", "storytelling", "blog-posts", "creative"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+
+  // RESEARCHERS (3)
+  { instanceId: "researcher-priya", name: "Priya (Researcher)", role: "producer", skills: ["research", "summarization", "fact-finding"], bidStrategy: "standard", usdcBalance: 0.05 },
+  { instanceId: "researcher-leo", name: "Leo (Researcher)", role: "producer", skills: ["research", "summarization", "fact-finding"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+  { instanceId: "researcher-nina", name: "Nina (Researcher)", role: "producer", skills: ["research", "summarization", "fact-finding"], bidStrategy: "premium", usdcBalance: 0.05 },
+
+  // DATA ANALYSTS (2)
+  { instanceId: "analyst-kai", name: "Kai (Analyst)", role: "producer", skills: ["data", "statistics", "market-research", "analysis"], bidStrategy: "premium", usdcBalance: 0.05 },
+  { instanceId: "analyst-zoe", name: "Zoe (Analyst)", role: "producer", skills: ["data", "statistics", "market-research", "analysis"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // CODERS (2)
+  { instanceId: "coder-dev", name: "Dev (Coder)", role: "producer", skills: ["code", "programming", "scripts", "automation"], bidStrategy: "premium", usdcBalance: 0.05 },
+  { instanceId: "coder-aria", name: "Aria (Coder)", role: "producer", skills: ["code", "programming", "scripts", "automation"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // TRANSLATORS (2)
+  { instanceId: "translator-omar", name: "Omar (Translator)", role: "producer", skills: ["translation", "localization", "multilingual"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+  { instanceId: "translator-yuki", name: "Yuki (Translator)", role: "producer", skills: ["translation", "localization", "multilingual"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // SUMMARIZERS (2)
+  { instanceId: "summarizer-finn", name: "Finn (Summarizer)", role: "producer", skills: ["summarization", "condensing", "tldr"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+  { instanceId: "summarizer-lia", name: "Lia (Summarizer)", role: "producer", skills: ["summarization", "condensing", "tldr"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // COPYWRITERS (2)
+  { instanceId: "copy-jade", name: "Jade (Copywriter)", role: "producer", skills: ["copywriting", "marketing", "ads", "persuasion"], bidStrategy: "standard", usdcBalance: 0.05 },
+  { instanceId: "copy-rex", name: "Rex (Copywriter)", role: "producer", skills: ["copywriting", "marketing", "ads", "persuasion"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+
+  // SEO SPECIALISTS (2)
+  { instanceId: "seo-nova", name: "Nova (SEO)", role: "producer", skills: ["seo", "keywords", "optimization", "search"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+  { instanceId: "seo-blaze", name: "Blaze (SEO)", role: "producer", skills: ["seo", "keywords", "optimization", "search"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // TEXT ILLUSTRATORS (2)
+  { instanceId: "illus-sage", name: "Sage (Illustrator)", role: "producer", skills: ["descriptions", "visual-writing", "imagery"], bidStrategy: "standard", usdcBalance: 0.05 },
+  { instanceId: "illus-ember", name: "Ember (Illustrator)", role: "producer", skills: ["descriptions", "visual-writing", "imagery"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+
+  // EDITORS (2)
+  { instanceId: "editor-quinn", name: "Quinn (Editor)", role: "verifier", skills: ["editing", "proofreading", "grammar", "polish"], bidStrategy: "standard", usdcBalance: 0.05 },
+  { instanceId: "editor-blake", name: "Blake (Editor)", role: "verifier", skills: ["editing", "proofreading", "grammar", "polish"], bidStrategy: "premium", usdcBalance: 0.05 },
+
+  // FACT CHECKERS (2)
+  { instanceId: "fact-river", name: "River (Fact Checker)", role: "verifier", skills: ["fact-checking", "verification", "accuracy"], bidStrategy: "premium", usdcBalance: 0.05 },
+  { instanceId: "fact-dawn", name: "Dawn (Fact Checker)", role: "verifier", skills: ["fact-checking", "verification", "accuracy"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // QA TESTERS (2)
+  { instanceId: "qa-storm", name: "Storm (QA)", role: "verifier", skills: ["testing", "quality-assurance", "review"], bidStrategy: "standard", usdcBalance: 0.05 },
+  { instanceId: "qa-pixel", name: "Pixel (QA)", role: "verifier", skills: ["testing", "quality-assurance", "review"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+
+  // COMPLIANCE (2)
+  { instanceId: "comply-atlas", name: "Atlas (Compliance)", role: "verifier", skills: ["compliance", "legal", "policy"], bidStrategy: "premium", usdcBalance: 0.05 },
+  { instanceId: "comply-vera", name: "Vera (Compliance)", role: "verifier", skills: ["compliance", "legal", "policy"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // NEGOTIATORS (2)
+  { instanceId: "nego-rex", name: "Rex (Negotiator)", role: "finance", skills: ["negotiation", "pricing", "counter-offer"], bidStrategy: "aggressive", usdcBalance: 0.05 },
+  { instanceId: "nego-sky", name: "Sky (Negotiator)", role: "finance", skills: ["negotiation", "pricing", "counter-offer"], bidStrategy: "standard", usdcBalance: 0.05 },
+
+  // REPUTATION TRACKERS (1)
+  { instanceId: "reputation-agent", name: "Reputation Tracker", role: "meta", skills: ["reputation", "leaderboard", "scoring"], bidStrategy: "standard", usdcBalance: 0.05 }
 ];
 
 for (const sp of specialistsData) {
@@ -214,7 +269,7 @@ const existingAgents = [
     name: "Master Agent",
     role: "meta" as AgentRole,
     skills: ["orchestration", "coordination"],
-    usdcBalance: 1.00,
+    usdcBalance: 100.00,
     bidStrategy: "standard" as BidStrategy,
     poolType: null
   },
@@ -223,7 +278,7 @@ const existingAgents = [
     name: "Research Agent",
     role: "producer" as AgentRole,
     skills: ["research", "fact-finding"],
-    usdcBalance: 0.10,
+    usdcBalance: 10.00,
     bidStrategy: "standard" as BidStrategy,
     poolType: null
   }
@@ -253,12 +308,19 @@ export function getAgent(instanceId: string): Agent | undefined {
   return agent;
 }
 
+// ── Bid Race Condition Prevention (Bug Fix 3) ────────────────────────────────
+// pendingLocks tracks instanceIds currently in bid evaluation.
+// Before marking an agent busy for a bid, check !pendingLocks.has(instanceId).
+export const pendingLocks: Set<string> = new Set();
+
 export function updateAgent(instanceId: string, updates: Partial<Agent>): void {
   console.log(`🔄 [updateAgent] Starting update for: ${instanceId}`);
   const agent = agentRegistry.get(instanceId);
   if (agent) {
     Object.assign(agent, updates);
     console.log(`🔄 [updateAgent] Finished update for: ${instanceId}. New status: ${agent.status}, balance: ${agent.usdcBalance}`);
+    // 🔥 Fire-and-forget Firebase sync — never awaited, never blocks economy loop
+    updateAgentFields(instanceId, updates).catch(console.error);
   } else {
     console.log(`⚠️ [updateAgent] Finished update: Agent ${instanceId} not found.`);
   }

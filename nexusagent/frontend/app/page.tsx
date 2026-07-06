@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * page.tsx — NexusAgent Command Center (Phase 5 — Light Theme)
+ * page.tsx — NexusAgent Command Center (Phase 7 — 49-Agent Economy)
  * ──────────────────────────────────────────────────────────────────────────────
  * 3-column dashboard layout:
  *   [Header — logo + stats + connection]
@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { socket } from '@/lib/socket';
 import type { AgentStatus, Bounty } from '@/lib/api';
 import { getBounties, getAgentStatus } from '@/lib/api';
@@ -22,12 +23,19 @@ import AgentFeed   from '@/components/AgentFeed';
 import PaymentLog  from '@/components/PaymentLog';
 import BountyBoard from '@/components/BountyBoard';
 import Leaderboard from '@/components/Leaderboard';
-import EconomyDashboard from '@/components/EconomyDashboard';
 
 // ── Core vs Specialist agent grouping ────────────────────────────────────────
 
-const CORE_AGENTS    = ['MasterAgent', 'ResearchAgent', 'WriterAgent', 'JudgeAgent'];
-const SPECIALIST_AGENTS = ['TreasuryAgent', 'DataAnalystAgent', 'FactCheckerAgent'];
+const CORE_AGENT_KEYS = [
+  'master-agent', 'research-agent',
+  'hiring-agent-1', 'hiring-agent-2', 'hiring-agent-3',
+  'broker-agent-1', 'broker-agent-2', 'broker-agent-3',
+  'escrow-agent-1', 'escrow-agent-2', 'escrow-agent-3',
+  'treasury-agent-1', 'treasury-agent-2',
+  'judge-agent-1', 'judge-agent-2',
+  'bank-agent-1', 'bank-agent-2',
+  'guild-coordinator',
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -37,7 +45,6 @@ export default function HomePage() {
   const [connected, setConnected]   = useState(false);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [agentError, setAgentError] = useState('');
-  const [activeTab, setActiveTab] = useState<'command' | 'analytics'>('command');
 
   // ── Data fetchers ──────────────────────────────────────────────────────────
 
@@ -101,9 +108,10 @@ export default function HomePage() {
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
-  const coreAgents       = agents.filter((a) => CORE_AGENTS.includes(a.agentName));
-  const specialistAgents = agents.filter((a) => SPECIALIST_AGENTS.includes(a.agentName));
+  const coreAgents       = agents.filter((a) => CORE_AGENT_KEYS.includes(a.agentName));
+  const specialistAgents = agents.filter((a) => !CORE_AGENT_KEYS.includes(a.agentName));
   const totalBalance     = agents.reduce((sum, a) => sum + a.balance, 0);
+  const totalAgentsCount = agents.length > 0 ? agents.length : 49;
   const completedCount   = bounties.filter((b) => b.status === 'completed').length;
   const activeCount      = bounties.filter((b) => b.status !== 'completed' && b.status !== 'cancelled').length;
 
@@ -137,7 +145,7 @@ export default function HomePage() {
                 <h1 className="text-xl font-extrabold bg-gradient-to-r from-violet-600 via-blue-600 to-emerald-500 bg-clip-text text-transparent leading-tight">
                   NexusAgent
                 </h1>
-                <p className="text-slate-400 text-xs">Autonomous AI Bounty Economy · Arc Testnet · 33 Agents</p>
+                <p className="text-slate-400 text-xs">Autonomous AI Bounty Economy · Arc Testnet · {totalAgentsCount} Agents</p>
               </div>
             </div>
 
@@ -159,7 +167,7 @@ export default function HomePage() {
             {/* Agent count badge */}
             <div className="hidden lg:flex items-center gap-2 bg-gradient-to-r from-violet-50 to-blue-50 border border-violet-200 rounded-full px-3 py-1.5">
               <span className="text-base">🤖</span>
-              <span className="text-violet-700 text-xs font-semibold">33 Agents Loaded</span>
+              <span className="text-violet-700 text-xs font-semibold">{totalAgentsCount} Agents Loaded</span>
             </div>
 
             {/* Connection */}
@@ -171,23 +179,24 @@ export default function HomePage() {
               <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
               {connected ? 'Live' : 'Offline'}
             </div>
+
+            {/* AI Economy Infinite Canvas Button */}
+            <Link
+              href="/economy"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-sm transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <span>🌐</span>
+              <span>See AI Economy</span>
+            </Link>
           </div>
         </div>
       </header>
 
-      {/* ── Tab Navigation ─────────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-slate-200 bg-slate-50/50 py-2.5 px-6">
-        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('command')}
-              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer ${
-                activeTab === 'command'
                   ? 'bg-violet-600 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              💼 Command Center (8-Agent Demo)
+              💼 Command Center (49-Agent Economy)
             </button>
             <button
               onClick={() => setActiveTab('analytics')}
@@ -197,7 +206,7 @@ export default function HomePage() {
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              📊 Economy Analytics Dashboard (33-Agent Sandbox)
+              📊 Economy Analytics Dashboard (49-Agent Simulation)
             </button>
           </div>
           
@@ -279,11 +288,6 @@ export default function HomePage() {
               <Leaderboard />
             </div>
           </div>
-        ) : (
-          <div className="h-[calc(100vh-140px)] overflow-y-auto pr-1">
-            <EconomyDashboard />
-          </div>
-        )}
       </main>
 
       {/* ── Footer ──────────────────────────────────────────────────────────── */}

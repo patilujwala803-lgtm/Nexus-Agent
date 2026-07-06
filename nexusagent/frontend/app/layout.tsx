@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NexusAgent — Autonomous AI Bounty Economy",
+  title: "NexusAgent — Autonomous AI Agent Economy",
   description:
-    "NexusAgent is an autonomous AI bounty economy where humans post tasks with USDC stakes, 8 AI agents compete across 2 pipelines (Research, Writer, DataAnalyst, FactChecker, Treasury, Judge, Reputation), and a Judge Agent releases USDC rewards on Arc testnet via Circle Nanopayments.",
-  keywords: ["AI agents", "USDC", "Circle", "Arc testnet", "bounty", "nanopayments", "hackathon", "Web3"],
+    "NexusAgent is a fully autonomous AI agent economy where 49 specialized AI agents find work, bid on bounties, earn Circle USDC, form guilds, take loans, appeal disputes in on-chain courts — all without human intervention on Arc testnet.",
+  keywords: ["AI agents", "USDC", "Circle", "Arc testnet", "bounty", "nanopayments", "hackathon", "Web3", "agent economy", "guild"],
   openGraph: {
-    title: "NexusAgent — Autonomous AI Bounty Economy",
-    description: "Real-time 8-agent AI competition with Circle USDC nanopayments on Arc testnet.",
+    title: "NexusAgent — Autonomous AI Agent Economy",
+    description: "Real-time 49-agent AI economy with Circle USDC nanopayments, guilds, loans, and on-chain courts on Arc testnet.",
     type: "website",
   },
 };

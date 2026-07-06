@@ -14,11 +14,11 @@ const balances = await getBalance(master.walletId);
 if (!balances.length) {
   console.log('⚠️  No balances returned yet.');
 } else {
-  balances.forEach((b: Record<string, unknown>) => {
+  balances.forEach((b: any) => {
     console.log('Full token object:', JSON.stringify(b, null, 2));
   });
 
-  const usdc = balances.find((b: Record<string, unknown>) => {
+  const usdc = balances.find((b: any) => {
     const token = b.token as Record<string, string> | undefined;
     return token?.symbol?.toUpperCase().includes('USDC');
   });

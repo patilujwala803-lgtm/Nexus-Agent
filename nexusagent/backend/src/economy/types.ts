@@ -1,6 +1,6 @@
 export type AgentRole = "producer" | "verifier" | "finance" | "meta";
 export type BidStrategy = "aggressive" | "standard" | "premium";
-export type AgentStatus = "idle" | "busy" | "offline";
+export type AgentStatus = "idle" | "busy" | "offline" | "educating";
 export type TaskStatus = 
   "open" | "bidding" | "in-progress" | "verifying" | "complete" | "failed";
 export type BidStatus = 
@@ -31,6 +31,8 @@ export interface Agent {
   loanBalance: number;           // loan amount to repay
   loanInterestRate: number;      // credit score determined rate
   qualityOffset: number;         // permanent improvement from education
+  certifications: string[];      // dynamic skill certs
+  isHighDefaultRisk: boolean;    // collateral default seizure flag
 }
 
 export interface Bid {
@@ -65,6 +67,12 @@ export interface Task {
   paymentTxHash: string | null;
   hiringAgentId: string | null;  // which hiring agent handled this
   assignedGuildId?: string | null; // Phase 7: if guild wins
+  taskVariant: "normal" | "guild" | "court" | "subcontract" | "loan" | "education";
+  guildName: string | null;
+  isAppeal: boolean;
+  subcontractedTo: string | null;
+  loanTriggered: boolean;
+  educationTriggered: boolean;
 }
 
 export interface Guild {

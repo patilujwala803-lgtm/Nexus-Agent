@@ -49,9 +49,11 @@ export interface Submission {
 
 export interface AgentStatus {
   agentName: string;
+  name?: string;
   walletId: string;
   address: string;
   balance: number;
+  role?: string;
   blockchain: string;
 }
 
@@ -84,6 +86,27 @@ export async function createBounty(data: CreateBountyPayload): Promise<Bounty> {
  * getAgentStatus — returns live USDC balances for all 7 agent wallets (Phase 5).
  */
 export async function getAgentStatus(): Promise<{ agents: AgentStatus[]; timestamp: string }> {
+  try {
+    const res = await api.get('/api/economy/agents');
+    const agentList = Array.isArray(res.data) 
+      ? res.data 
+      : (res.data && Array.isArray(res.data.agents) ? res.data.agents : null);
+
+    if (agentList) {
+      const mapped: AgentStatus[] = agentList.map((ag: any) => ({
+        agentName: ag.instanceId || ag.name,
+        name: ag.name || ag.instanceId,
+        walletId: ag.walletId || ag.instanceId,
+        address: ag.walletAddress || ag.address || '0x...',
+        balance: typeof ag.usdcBalance === 'number' ? ag.usdcBalance : (ag.balance || 0),
+        role: ag.role || 'producer',
+        blockchain: 'ARC-TESTNET',
+      }));
+      return { agents: mapped, timestamp: new Date().toISOString() };
+    }
+  } catch (err) {
+    console.warn('Fallback to /agent/status:', err);
+  }
   const res = await api.get('/agent/status');
   return res.data;
 }

@@ -12,6 +12,9 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { createRequire } from 'module';
 import fs from 'fs/promises';
 import path from 'path';
@@ -32,7 +35,7 @@ const __dirname  = path.dirname(__filename);
 const WALLETS_FILE = path.join(__dirname, '..', 'wallets.json');
 const BLOCKCHAIN = 'ARC-TESTNET' as const;
 
-// ── All agents needing wallets (Phase 7 Expanded list) ───────────────────────
+// ── All agents needing wallets (Phase 7 Expanded list: 49 agents) ─────────────
 const AGENT_NAMES = [
   'MasterAgent',
   'ResearchAgent',
@@ -57,20 +60,36 @@ const AGENT_NAMES = [
   'bank-agent-1',
   'bank-agent-2',
   'guild-coordinator',
-  'writer-agent',
-  'researcher-agent',
-  'data-analyst-agent',
-  'coder-agent',
-  'translator-agent',
-  'summarizer-agent',
-  'copywriter-agent',
-  'seo-agent',
-  'illustrator-agent',
-  'editor-agent',
-  'factchecker-agent',
-  'qa-agent',
-  'compliance-agent',
-  'negotiator-agent',
+  'writer-alex',
+  'writer-maya',
+  'writer-sam',
+  'researcher-priya',
+  'researcher-leo',
+  'researcher-nina',
+  'analyst-kai',
+  'analyst-zoe',
+  'coder-dev',
+  'coder-aria',
+  'translator-omar',
+  'translator-yuki',
+  'summarizer-finn',
+  'summarizer-lia',
+  'copy-jade',
+  'copy-rex',
+  'seo-nova',
+  'seo-blaze',
+  'illus-sage',
+  'illus-ember',
+  'editor-quinn',
+  'editor-blake',
+  'fact-river',
+  'fact-dawn',
+  'qa-storm',
+  'qa-pixel',
+  'comply-atlas',
+  'comply-vera',
+  'nego-rex',
+  'nego-sky',
   'reputation-agent',
   'master-agent',
   'research-agent'
@@ -155,10 +174,13 @@ export async function createNexusWallets(): Promise<WalletsFile> {
     walletSetId = `mock-walletset-${crypto.randomUUID()}`;
   }
 
-  const finalWallets: AgentWallet[] = [...existingWallets];
+  // Filter out any mock wallets so we attempt to recreate them with the real Circle API
+  const finalWallets: AgentWallet[] = existingWallets.filter(w => 
+    !w.address.startsWith('0xmock') && !w.walletId.startsWith('mock-')
+  );
 
   for (const agentName of AGENT_NAMES) {
-    const alreadyExists = existingWallets.find(w => w.agentName.toLowerCase() === agentName.toLowerCase());
+    const alreadyExists = finalWallets.find(w => w.agentName.toLowerCase() === agentName.toLowerCase());
     if (alreadyExists) {
       console.log(`✅ ${agentName} wallet already exists: ${alreadyExists.address}`);
       continue;
