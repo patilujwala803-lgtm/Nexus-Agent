@@ -81,7 +81,6 @@ export const FlowDiagram: React.FC<FlowDiagramProps> = ({
   const line4 = getLineStyle(4); // JudgeNode -> PaymentNode
 
   const isGuildVariant = taskVariant === 'guild';
-  const isCourtVariant = taskVariant === 'court';
   const isSubcontractVariant = taskVariant === 'subcontract';
 
   // Container glow styles per variant
