@@ -39,6 +39,7 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [announcements, setAnnouncements] = useState<EconomyAnnouncement[]>([]);
   const [educatingAgents, setEducatingAgents] = useState<EducatingAgent[]>([]);
+  const [apiQuotaError, setApiQuotaError] = useState<boolean>(false);
 
   const addToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -189,13 +190,37 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
       }));
     });
 
-    socket.on('economy:agent_hired', (data: { taskId: string; agentId: string; agentName: string; finalPrice: number }) => {
+    socket.on('economy:agent_hired', (data: { taskId: string; agentId: string; agentName: string; finalPrice: number; reputation?: number; jobsCompleted?: number; skills?: string[]; role?: string; usdcBalance?: number; totalEarned?: number }) => {
       updateFlowInState(data.taskId, (prev) => ({
         ...prev,
         phase: 'hired',
         biddingActive: false,
         winnerAgentId: data.agentId,
-        workerAgent: prev.workerAgent || ({ name: data.agentName, instanceId: data.agentId } as Agent),
+        workerAgent: prev.workerAgent
+          ? {
+              ...prev.workerAgent,
+              name: data.agentName,
+              instanceId: data.agentId,
+              reputation: data.reputation ?? prev.workerAgent.reputation,
+              jobsCompleted: data.jobsCompleted ?? prev.workerAgent.jobsCompleted,
+              skills: data.skills ?? prev.workerAgent.skills,
+              role: (data.role ?? prev.workerAgent.role) as Agent['role'],
+              usdcBalance: data.usdcBalance ?? prev.workerAgent.usdcBalance,
+              totalEarned: data.totalEarned ?? prev.workerAgent.totalEarned,
+            }
+          : ({
+              name: data.agentName,
+              instanceId: data.agentId,
+              id: data.agentId,
+              reputation: data.reputation ?? 0,
+              jobsCompleted: data.jobsCompleted ?? 0,
+              skills: data.skills ?? [],
+              role: (data.role ?? 'producer') as Agent['role'],
+              usdcBalance: data.usdcBalance ?? 0,
+              totalEarned: data.totalEarned ?? 0,
+              status: 'busy',
+              totalSpent: 0,
+            } as Agent),
         bids: prev.bids.map((b) =>
           b.agentInstanceId === data.agentId || b.agentId === data.agentId
             ? { ...b, status: 'accepted' }
@@ -236,6 +261,7 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
       taskId: string; agentName: string; earned: number; qualityScore: number;
       txHash: string; result?: string; taskVariant?: any; guildName?: string;
       isAppeal?: boolean; subcontractedTo?: string;
+      agentReputation?: number; agentJobsCompleted?: number; agentTotalEarned?: number; agentUsdcBalance?: number;
     }) => {
       const { taskId, agentName, earned, qualityScore, txHash, result } = data;
       setFlows((prevMap) => {
@@ -253,6 +279,14 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
             guildName: data.guildName || flow.guildName,
             isAppeal: data.isAppeal || flow.isAppeal,
             subcontractedTo: data.subcontractedTo || flow.subcontractedTo,
+            // Refresh workerAgent stats with post-task values from backend
+            workerAgent: flow.workerAgent ? {
+              ...flow.workerAgent,
+              reputation: data.agentReputation ?? flow.workerAgent.reputation,
+              jobsCompleted: data.agentJobsCompleted ?? flow.workerAgent.jobsCompleted,
+              totalEarned: data.agentTotalEarned ?? flow.workerAgent.totalEarned,
+              usdcBalance: data.agentUsdcBalance ?? flow.workerAgent.usdcBalance,
+            } : flow.workerAgent,
           };
           nextMap.set(taskId, updated);
           if (onSessionUpdate) onSessionUpdate(updated);
@@ -413,6 +447,11 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
       addAnnouncement('court_appeal', { ...data, round: 'verdict' });
     });
 
+    socket.on('economy:api_quota_exhausted', () => {
+      setApiQuotaError(true);
+      setTimeout(() => setApiQuotaError(false), 10000);
+    });
+
     return () => {
       socket.disconnect();
     };
@@ -430,5 +469,6 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
     addToast,
     announcements,
     educatingAgents,
+    apiQuotaError,
   };
 }

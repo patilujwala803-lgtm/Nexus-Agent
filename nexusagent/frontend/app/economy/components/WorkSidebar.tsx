@@ -23,8 +23,8 @@ export const WorkSidebar: React.FC<WorkSidebarProps> = ({
   const isCourtFlow = taskVariant === 'court';
   const isGuildFlow = taskVariant === 'guild';
   const workerName = task.assignedAgentName || workerAgent?.name || 'Assigned Agent';
-  const rep = workerAgent?.reputation ?? 85;
-  const jobs = workerAgent?.jobsCompleted ?? 14;
+  const rep = workerAgent?.reputation ?? null;
+  const jobs = workerAgent?.jobsCompleted ?? null;
 
   const acceptedBid = flow.bids.find((b) => b.status === 'accepted');
   const paidAmount = acceptedBid ? acceptedBid.bidAmountUSDC : task.budgetUSDC;
@@ -54,9 +54,9 @@ export const WorkSidebar: React.FC<WorkSidebarProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-              <span>Rep: {rep}/100</span>
+              <span>Rep: {rep !== null ? `${rep}/100` : '—'}</span>
               <span>•</span>
-              <span>{jobs} jobs completed</span>
+              <span>{jobs !== null ? `${jobs} jobs completed` : 'Stats loading...'}</span>
             </div>
             {isGuildFlow && guildName && (
               <div className="mt-1 text-[10px] font-bold" style={{ color: '#7c3aed' }}>🏛️ {guildName}</div>

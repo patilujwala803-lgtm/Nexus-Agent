@@ -17,7 +17,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, all
     if (isOpen) {
       setIsLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-      fetch(`${API_URL}/history`)
+      fetch(`${API_URL}/task-records`)
         .then((res) => res.json())
         .then((data) => {
           setHistoryTasks(data || []);

@@ -221,7 +221,7 @@ export default function SupremeCourt() {
 
                   <div className="flex items-center gap-3 mt-1.5">
                     <span className="text-slate-500 text-[10px]">
-                      By: <span className="text-slate-400 font-mono">{appeal.filedBy.slice(0, 12)}</span>
+                      By: <span className="text-slate-400 font-mono">{appeal.filedBy ? appeal.filedBy.slice(0, 12) : 'Unknown'}</span>
                     </span>
                     <span className="text-amber-500/70 text-[10px]">Fee: 3 USDC ✓</span>
                   </div>

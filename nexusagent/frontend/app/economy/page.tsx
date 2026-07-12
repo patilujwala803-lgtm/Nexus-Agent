@@ -59,6 +59,7 @@ export default function EconomyCanvasPage() {
     addToast,
     announcements,
     educatingAgents,
+    apiQuotaError,
   } = useEconomySocket(addOrUpdateFlow);
 
   // Agent registry cache for AgentSidebar
@@ -226,6 +227,11 @@ export default function EconomyCanvasPage() {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden select-none font-sans" style={{ background: 'var(--bg-canvas)' }}>
+      {apiQuotaError && (
+        <div className="absolute top-0 left-0 w-full bg-red-600/90 backdrop-blur-md text-white text-center py-3 font-bold text-lg animate-pulse z-50 shadow-lg border-b border-red-500">
+          🚨 API Quota is over! 🚨
+        </div>
+      )}
       {/* ── LAYER 1: Infinite Canvas & Flow Diagrams ───────────────────────── */}
       <div
         ref={containerRef}

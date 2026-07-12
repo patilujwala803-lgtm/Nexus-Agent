@@ -47,6 +47,7 @@ export default function HomePage() {
   const [agentError, setAgentError] = useState('');
   const [activeTab, setActiveTab] = useState<'command' | 'analytics'>('command');
   const [selectedBounty, setSelectedBounty] = useState<Bounty | null>(null);
+  const [apiQuotaError, setApiQuotaError] = useState(false);
 
   // ── Data fetchers ──────────────────────────────────────────────────────────
 
@@ -108,6 +109,17 @@ export default function HomePage() {
     return () => { socket.off('agentActivity', handleActivity); };
   }, [fetchBounties, fetchAgents]);
 
+  // ── API Quota Error Listener ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!socket) return;
+    function handleQuotaError() {
+      setApiQuotaError(true);
+      setTimeout(() => setApiQuotaError(false), 10000);
+    }
+    socket.on('economy:api_quota_exhausted', handleQuotaError);
+    return () => { socket.off('economy:api_quota_exhausted', handleQuotaError); };
+  }, []);
+
   // ── Derived state ──────────────────────────────────────────────────────────
 
   const coreAgents       = agents.filter((a) => CORE_AGENT_KEYS.includes(a.agentName));
@@ -129,6 +141,11 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30 text-slate-900 flex flex-col">
+      {apiQuotaError && (
+        <div className="w-full bg-red-600/90 backdrop-blur-md text-white text-center py-3 font-bold text-lg animate-pulse z-50 shadow-lg border-b border-red-500">
+          🚨 API Quota is over! 🚨
+        </div>
+      )}
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="shrink-0 border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm">

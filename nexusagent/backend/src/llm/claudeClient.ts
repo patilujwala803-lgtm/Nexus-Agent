@@ -14,6 +14,10 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { EventEmitter } from 'events';
+
+export const llmEventEmitter = new EventEmitter();
+
 const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
 const TIMEOUT_MS = 30000;
@@ -126,6 +130,7 @@ export async function askClaude(prompt: string): Promise<string> {
   }
 
   console.error(`❌ [claudeClient] All ${keys.length} API keys failed. Using fallback.`);
+  llmEventEmitter.emit('quota_exhausted');
   return FALLBACK;
 }
 
@@ -191,5 +196,6 @@ export async function askJudge(systemPrompt: string, userPrompt: string): Promis
   }
 
   console.error(`❌ [Judge] All API keys failed. Using fallback verdict.`);
+  llmEventEmitter.emit('quota_exhausted');
   return FALLBACK;
 }

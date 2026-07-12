@@ -45,9 +45,9 @@ import { registerDataAnalystEmitter } from './agents/dataAnalystAgent.js';
 import { registerFactCheckerEmitter } from './agents/factCheckerAgent.js';
 import { registerTreasuryEmitter } from './agents/treasuryAgent.js';
 import { registerReputationEmitter, getLeaderboard } from './agents/reputationAgent.js';
-import { getAllAgents } from './src/economy/agentRegistry.js';
+import { getAllAgents, updateAgent } from './src/economy/agentRegistry.js';
 import { syncCircleBalances } from './src/economy/balanceSync.js';
-import { saveAllAgents } from './src/firebase/agentRepository.js';
+import { saveAllAgents, getAllAgentsFromDB } from './src/firebase/agentRepository.js';
 
 
 // ── App setup ─────────────────────────────────────────────────────────────────
@@ -56,12 +56,18 @@ const PORT = Number(process.env.PORT ?? 4000);
 
 const httpServer = createServer(app);
 
+import { llmEventEmitter } from './src/llm/claudeClient.js';
+
 // ── Socket.io ─────────────────────────────────────────────────────────────────
 const io = new SocketIOServer(httpServer, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],
   },
+});
+
+llmEventEmitter.on('quota_exhausted', () => {
+  io.emit('economy:api_quota_exhausted', { message: 'API quota is over' });
 });
 
 io.on('connection', (socket) => {
@@ -369,11 +375,33 @@ async function main() {
     console.warn('⚠️  Balance sync failed (non-critical):', (err as Error).message);
   });
 
-  // 🔥 Sync initial agent state to Firebase (fire-and-forget)
-  const allStartupAgents = getAllAgents();
-  saveAllAgents(allStartupAgents)
-    .then(() => console.log('🔥 Agent registry synced to Firebase'))
-    .catch(console.error);
+  // 🔥 Sync initial agent state from/to Firebase
+  getAllAgentsFromDB().then(savedAgents => {
+    if (savedAgents && savedAgents.length > 0) {
+      console.log(`🔥 Restoring stats for ${savedAgents.length} agents from Firebase`);
+      for (const saved of savedAgents) {
+        updateAgent(saved.instanceId, {
+          reputation: saved.reputation ?? 0,
+          totalEarned: saved.totalEarned ?? 0,
+          totalSpent: saved.totalSpent ?? 0,
+          jobsCompleted: saved.jobsCompleted ?? 0,
+          jobsFailed: saved.jobsFailed ?? 0,
+          loanBalance: (saved as any).loanAmount ?? 0,
+          loanInterestRate: saved.loanInterestRate ?? 0,
+          isHighDefaultRisk: saved.isHighDefaultRisk ?? false,
+          consecutiveWins: saved.consecutiveWins ?? 0,
+          consecutiveIdleCycles: saved.consecutiveIdleCycles ?? 0,
+          certifications: (saved as any).hasAdvancedCert ? ["Advanced Certification"] : [],
+          qualityOffset: saved.qualityOffset ?? 0,
+        });
+      }
+    } else {
+      const allStartupAgents = getAllAgents();
+      saveAllAgents(allStartupAgents)
+        .then(() => console.log('🔥 Initial agent registry synced to Firebase'))
+        .catch(console.error);
+    }
+  }).catch(console.error);
 
   // Section 2: Periodic balance sync every 60 seconds
   setInterval(() => {

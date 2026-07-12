@@ -37,7 +37,7 @@ export function AnalyticsSidebar({ isOpen, onClose, stats }: AnalyticsSidebarPro
           setAgents(list);
         })
         .catch(() => {});
-    }, 8000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [isOpen]);
 
