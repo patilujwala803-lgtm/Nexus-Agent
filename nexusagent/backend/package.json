@@ -6,7 +6,7 @@
   "main": "index.ts",
   "scripts": {
     "dev": "tsx watch --env-file=.env index.ts",
-    "start": "tsx --env-file=.env index.ts",
+    "start": "tsx index.ts",
     "build": "tsc",
     "setup": "tsx --env-file=.env setup-entity-secret.ts",
     "wallets": "tsx --env-file=.env circle/walletService.ts"
