@@ -105,6 +105,26 @@ app.use('/content', contentRouter);
 import { createEconomyRouter } from './src/routes/economyRoutes.js';
 app.use('/api/economy', createEconomyRouter(io));
 
+import { createCourtRouter } from './src/routes/courtRoutes.js';
+app.use('/court', createCourtRouter(io));
+
+// ── Task Records (from taskStore) ─────────────────────────────────────────────
+import { getAllTaskRecords, getTaskRecord, getTaskRecordByInternalId } from './db/taskStore.js';
+
+app.get('/task-records', (_req: Request, res: Response) => {
+  res.json(getAllTaskRecords());
+});
+
+app.get('/task-records/:taskId', (req: Request, res: Response) => {
+  const taskId = String(req.params.taskId);
+  const record = getTaskRecord(taskId) || getTaskRecordByInternalId(taskId);
+  if (!record) {
+    res.status(404).json({ error: `Task record ${taskId} not found` });
+    return;
+  }
+  res.json(record);
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 /** GET /.well-known/appspecific/com.chrome.devtools.json — silence Chrome DevTools 404 */

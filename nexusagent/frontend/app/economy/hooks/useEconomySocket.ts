@@ -170,8 +170,12 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
       setFlows((currMap) => {
         const flowList = Array.from(currMap.keys());
         const flowIndex = flowList.indexOf(taskId);
-        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 240;
-        spawnCircle('#fbbf24', 263, flowY + 36, 348, flowY + 50, 1000);
+        const numBids = currMap.get(taskId)?.bids?.length || 0;
+        const rowHeight = numBids >= 3 ? 260 : 210;
+        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 320;
+        const centerY = flowY + rowHeight / 2;
+        // Ball travels from bid spoke cards (bidNodeX-120=200) to bidNode (320)
+        spawnCircle('#fbbf24', 200, centerY, 320, centerY, 1000);
         return currMap;
       });
     });
@@ -214,8 +218,12 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
       setFlows((currMap) => {
         const flowList = Array.from(currMap.keys());
         const flowIndex = flowList.indexOf(data.taskId);
-        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 240;
-        spawnCircle('#6366f1', 580, flowY + 50, 744, flowY + 50, 1200);
+        const numBids = currMap.get(data.taskId)?.bids?.length || 0;
+        const rowHeight = numBids >= 3 ? 260 : 210;
+        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 320;
+        const centerY = flowY + rowHeight / 2;
+        // Ball travels from workerCard (500) to paymentNode (720)
+        spawnCircle('#6366f1', 500, centerY, 720, centerY, 1200);
         return currMap;
       });
     });
@@ -254,8 +262,12 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
       setFlows((currMap) => {
         const flowList = Array.from(currMap.keys());
         const flowIndex = flowList.indexOf(taskId);
-        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 240;
-        spawnCircle('#22c55e', 884, flowY + 50, 580, flowY + 50, 1400);
+        const numBids = currMap.get(taskId)?.bids?.length || 0;
+        const rowHeight = numBids >= 3 ? 260 : 210;
+        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 320;
+        const centerY = flowY + rowHeight / 2;
+        // Payment ball travels from paymentNode (720) back to workerCard (500) as success pulse
+        spawnCircle('#22c55e', 720, centerY, 500, centerY, 1400);
         return currMap;
       });
       addToast(`✅ ${agentName} earned $${earned} USDC (Score: ${qualityScore}/100)`, 'success');
@@ -295,6 +307,15 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
     socket.on('economy:guild_formed', (data: any) => {
       addToast(`🏛️ ${data.guildName} formed! ${data.members?.length || 2} agents collaborating.`, 'success');
       addAnnouncement('guild_formed', data);
+      // Update the flow state with all guild collaborators
+      if (data.taskId) {
+        updateFlowInState(data.taskId, (prev) => ({
+          ...prev,
+          guildName: data.guildName || prev.guildName,
+          guildCollaborators: data.members || prev.guildCollaborators,
+          taskVariant: 'guild',
+        }));
+      }
     });
 
     socket.on('economy:loan_issued', (data: any) => {
@@ -342,8 +363,19 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
     });
 
     socket.on('economy:subcontract_hired', (data: any) => {
-      addToast(`🔗 ${data.primaryAgentName} subcontracted ${data.subAgentName}`, 'info');
+      addToast(`🔗 ${data.primaryAgentName} subcontracted ${data.subAgentName} for $${data.fee?.toFixed(2)} USDC`, 'info');
       addAnnouncement('subcontract_hired', data);
+      // Also update the flow state so the canvas shows the subcontract worker
+      if (data.taskId) {
+        updateFlowInState(data.taskId, (prev) => ({
+          ...prev,
+          subcontractedTo: data.subAgentName || prev.subcontractedTo,
+          subcontractAgentId: data.subAgentId || null,
+          subcontractAgentName: data.subAgentName || null,
+          subcontractFee: data.fee || null,
+          taskVariant: 'subcontract',
+        }));
+      }
     });
 
     // Education started — add to educating agents list
@@ -362,6 +394,23 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
     socket.on('economy:education_complete', (data: { agentId: string; agentName: string; skill: string; repGain: number; newReputation: number }) => {
       setEducatingAgents(prev => prev.filter(a => a.agentId !== data.agentId));
       addToast(`✨ ${data.agentName} mastered "${data.skill.replace(/-/g,' ')}"! Rep now ${data.newReputation}`, 'success');
+    });
+
+    // ── FIX 3: Supreme Court Appeal Events ──────────────────────────────────
+    socket.on('appeal_filed', (data: any) => {
+      addToast(`⚖️ Appeal filed on Task #${data.taskId}: ${data.issue?.slice(0,40)}...`, 'info');
+      addAnnouncement('court_appeal', { ...data, round: 'filing' });
+    });
+
+    socket.on('appeal_verdict', (data: any) => {
+      const inFavor = data.verdict === 'in_favor_of_appellant';
+      addToast(
+        inFavor
+          ? `✅ Supreme Court: Task #${data.taskId} — IN FAVOR of ${data.filedBy}. Forced payment executed.`
+          : `❌ Supreme Court: Task #${data.taskId} — Appeal DISMISSED.`,
+        inFavor ? 'success' : 'error'
+      );
+      addAnnouncement('court_appeal', { ...data, round: 'verdict' });
     });
 
     return () => {

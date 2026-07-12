@@ -121,14 +121,16 @@ export async function executeWork(
   await sleep(workDuration);
 
   // Step 3: Get output via Claude (with template fallback)
-  const claudePrompt = `You are ${workerAgent.name}, a specialist AI agent with skills in ${workerAgent.skills.join(", ")}.
-Complete this task professionally in 3-4 sentences:
+  const claudePrompt = `You are ${workerAgent.name}, an expert AI agent specializing in: ${workerAgent.skills.join(", ")}.
+
+You have been assigned this task and must COMPLETE it — do not describe what you will do, actually DO IT:
 Task: "${task.title}"
-Description: "${task.description}"
-Write a professional completion report for this task.`;
+Brief: "${task.description}"
+
+Deliver the ACTUAL completed work product in 4-6 sentences. Be specific, professional, and show real expertise. Write the output itself, not a summary of your actions.`;
 
   let result = await askClaude(claudePrompt);
-  if (result.includes("Claude is currently unavailable")) {
+  if (!result || result.includes("Nemotron is currently unavailable") || result.length < 20) {
     result = getWorkOutput(task.requiredSkill, task.title);
   }
 

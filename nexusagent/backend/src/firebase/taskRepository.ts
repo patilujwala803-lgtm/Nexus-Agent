@@ -227,3 +227,35 @@ export async function saveCourtEvent(event: {
     console.error("🔥 [taskRepository] saveCourtEvent error:", (err as Error).message);
   }
 }
+
+/**
+ * Fetches all tasks from Firestore.
+ */
+export async function getAllTasks(): Promise<any[]> {
+  if (!isFirebaseEnabled()) return [];
+  try {
+    const snapshot = await db.collection(TASKS_COL)
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
+    return snapshot.docs.map((doc: any) => doc.data());
+  } catch (err) {
+    console.error("🔥 [taskRepository] getAllTasks error:", (err as Error).message);
+    return [];
+  }
+}
+
+/**
+ * Fetches a specific task's history from Firestore by ID.
+ */
+export async function getTaskHistory(taskId: string): Promise<any | null> {
+  if (!isFirebaseEnabled()) return null;
+  try {
+    const doc = await db.collection(TASKS_COL).doc(taskId).get();
+    if (!doc.exists) return null;
+    return doc.data();
+  } catch (err) {
+    console.error("🔥 [taskRepository] getTaskHistory error:", (err as Error).message);
+    return null;
+  }
+}

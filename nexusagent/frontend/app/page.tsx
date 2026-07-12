@@ -46,6 +46,7 @@ export default function HomePage() {
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [agentError, setAgentError] = useState('');
   const [activeTab, setActiveTab] = useState<'command' | 'analytics'>('command');
+  const [selectedBounty, setSelectedBounty] = useState<Bounty | null>(null);
 
   // ── Data fetchers ──────────────────────────────────────────────────────────
 
@@ -193,53 +194,18 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-28">
-        
-        {/* Tab Navigation */}
-        <div className="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4 bg-white/50 backdrop-blur-md p-2 rounded-2xl border border-slate-200">
-          <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
-            <button
-              onClick={() => setActiveTab('command')}
-              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer ${
-                activeTab === 'command'
-                  ? 'bg-violet-600 text-white shadow-sm'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              💼 Command Center (49-Agent Economy)
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all duration-200 cursor-pointer ${
-                activeTab === 'analytics'
-                  ? 'bg-violet-600 text-white shadow-sm'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              📊 Economy Analytics Dashboard (49-Agent Simulation)
-            </button>
-          </div>
-          
-          <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider hidden sm:block">
-            {activeTab === 'command' 
-              ? 'Status: Live Blockchain Orchestrator' 
-              : 'Status: Live Economy Simulation Sandbox'}
-          </div>
-        </div>
-      </div>
-
       {/* ── Main content ────────────────────────────────────────────────────── */}
-      <main className="flex-1 max-w-[1600px] mx-auto w-full px-5 py-5 overflow-hidden">
-        {activeTab === 'command' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr_330px] gap-5 h-[calc(100vh-140px)]">
+      <main className="flex-1 max-w-[1600px] mx-auto w-full px-5 pt-10 pb-5 overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr_330px] gap-5 h-[calc(100vh-140px)]">
 
-            {/* ── Left: Bounty Board ─────────────────────────────────────────── */}
-            <div className="flex flex-col min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white/70 shadow-sm p-5">
+          {/* ── Left: Bounty Board ─────────────────────────────────────────── */}
+          <div className="flex flex-col min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white/70 shadow-sm p-5">
               <BountyBoard
                 bounties={bounties}
                 onBountyCreated={handleBountyCreated}
                 onDemoStarted={handleDemoStarted}
                 onRefresh={fetchBounties}
+                onBountySelect={setSelectedBounty}
               />
             </div>
 
@@ -251,62 +217,35 @@ export default function HomePage() {
             {/* ── Right: Wallets + PaymentLog + Leaderboard ─────────────────── */}
             <div className="flex flex-col gap-3 min-h-0 overflow-y-auto">
 
-              {/* Core Pipeline Agents (4 full cards) */}
-              <div>
-                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2 px-1">
-                  Core Pipeline
-                </p>
-                {loadingAgents ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="h-[90px] rounded-xl bg-slate-100 animate-pulse" />
-                    ))}
-                  </div>
-                ) : agentError ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-600 text-xs">
-                    ⚠️ {agentError}
-                  </div>
+              {/* Selected Bounty Output */}
+              <div className="flex-1 min-h-0 flex flex-col gap-3">
+                {selectedBounty ? (
+                   <div className="flex-1 overflow-y-auto rounded-2xl border border-violet-200 bg-white p-5 shadow-sm">
+                      <div className="flex justify-between items-center mb-3 border-b pb-2">
+                        <h3 className="text-sm font-bold text-slate-800">Result: {selectedBounty.title}</h3>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-bold">
+                          Winner: {selectedBounty.winner || 'Agent'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-700 whitespace-pre-wrap font-medium">
+                         {selectedBounty.submissions?.[0]?.content || 'Output is empty or agent did not return content.'}
+                      </div>
+                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {coreAgents.map((agent) => (
-                      <WalletCard key={agent.walletId} agent={agent} />
-                    ))}
-                  </div>
+                   <div className="flex-1 rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 flex flex-col items-center justify-center p-6 text-center shadow-inner">
+                     <span className="text-3xl mb-3 opacity-50">🤖</span>
+                     <p className="text-slate-500 text-sm font-medium">No Bounty Selected</p>
+                     <p className="text-slate-400 text-xs mt-1 max-w-[200px]">Click on a completed bounty from the board to view the agent's output here.</p>
+                   </div>
                 )}
-              </div>
 
-              {/* Specialist Agents (3 compact cards) */}
-              {specialistAgents.length > 0 && (
-                <div>
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2 px-1">
-                    Specialist Agents
-                  </p>
-                  <div className="space-y-1.5">
-                    {specialistAgents.map((agent) => (
-                      <WalletCard key={agent.walletId} agent={agent} compact />
-                    ))}
-                  </div>
+                {/* Payment Log */}
+                <div className="h-[250px] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
+                  <PaymentLog />
                 </div>
-              )}
-
-              {/* Payment Log */}
-              <div className="flex-1 min-h-[180px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
-                <PaymentLog />
               </div>
-
-              {/* Leaderboard */}
-              <Leaderboard />
             </div>
           </div>
-        ) : (
-          <div className="flex items-center justify-center h-full bg-white/50 backdrop-blur-md rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
-            <div>
-              <div className="text-4xl mb-4">📊</div>
-              <h2 className="text-xl font-bold text-slate-700 mb-2">Economy Analytics</h2>
-              <p className="text-slate-500">The 49-Agent Economy Simulation Dashboard is coming soon.</p>
-            </div>
-          </div>
-        )}
       </main>
 
       {/* ── Footer ──────────────────────────────────────────────────────────── */}

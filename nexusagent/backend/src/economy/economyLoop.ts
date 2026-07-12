@@ -27,6 +27,26 @@ import {
 } from "../firebase/taskRepository.js";
 import { saveAgent, saveAllAgents } from "../firebase/agentRepository.js";
 import { askClaude } from "../llm/claudeClient.js";
+import {
+  createTaskRecord,
+  updateTaskRecord,
+  appendPayment,
+  appendSubcontract,
+  getTaskRecordByInternalId,
+} from "../../db/taskStore.js";
+
+// Map from internal task UUID → 4-digit task ID
+const taskIdMap = new Map<string, string>();
+
+function getTaskStoreId(internalId: string): string | null {
+  return taskIdMap.get(internalId) || null;
+}
+
+function logPaymentToTask(internalId: string, from: string, to: string, amount: number, txHash: string, reason: string) {
+  const storeId = getTaskStoreId(internalId);
+  if (!storeId) return;
+  appendPayment(storeId, { from, to, amount, txHash, reason, timestamp: new Date().toISOString() });
+}
 
 
 console.log("🌐 [economyLoop] Module loading started (Phase 7 + Section 4/5/6 upgrades)...");
@@ -537,8 +557,10 @@ export function scheduleNextTask(): void {
   // No-op — replaced by dispatcherInterval in startEconomy
 }
 
-// ── Task Variant Selector (Section 4) ────────────────────────────────────────
-
+// ── FIX 6: Rebalanced Task Distribution ──────────────────────────────────────
+// Old: 50% guild / 30% court / 20% subcontract  → SEO, editing, summarization, translation idle
+// New: 30% guild / 20% court / 25% standard / 25% subcontract
+//      Standard tasks cover ALL skill types so every agent participates.
 function selectTaskTemplate(): {
   title: string;
   description: string;
@@ -549,16 +571,21 @@ function selectTaskTemplate(): {
 } {
   const rand = Math.random();
 
-  if (rand < 0.50) {
-    // 50% — GUILD TRIGGER TASK
+  if (rand < 0.30) {
+    // 30% — GUILD TRIGGER TASK
     const t = GUILD_TASKS[Math.floor(Math.random() * GUILD_TASKS.length)];
     const budget = parseFloat((Math.random() * 8 + 12).toFixed(2)); // 12-20
     return { ...t, budgetUSDC: budget };
-  } else if (rand < 0.80) {
-    // 30% — COURT APPEAL TASK
+  } else if (rand < 0.50) {
+    // 20% — COURT APPEAL TASK
     const t = COURT_TASKS[Math.floor(Math.random() * COURT_TASKS.length)];
     const budget = parseFloat((Math.random() * 8 + 10).toFixed(2)); // 10-18
     return { ...t, budgetUSDC: budget };
+  } else if (rand < 0.75) {
+    // 25% — STANDARD TASKS (all skills: seo/editing/translation/summarization)
+    const t = STANDARD_TASKS[Math.floor(Math.random() * STANDARD_TASKS.length)];
+    const budget = parseFloat((Math.random() * 6 + 3).toFixed(2)); // 3-9
+    return { ...t, budgetUSDC: budget, taskVariant: "normal" as const };
   } else {
     // 20% — SUBCONTRACT TASK
     const t = SUBCONTRACT_TASKS[Math.floor(Math.random() * SUBCONTRACT_TASKS.length)];
@@ -597,7 +624,8 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         updateAgent(agent.instanceId, {
           usdcBalance: parseFloat((agent.usdcBalance + 5.00).toFixed(6)),
           loanBalance: 5.00,
-          loanInterestRate: interestRate
+          loanInterestRate: interestRate,
+          loanDueDate: Date.now() + 5 * 60 * 1000 // 5 minutes from now
         });
 
         updateAgent(bankAgent.instanceId, {
@@ -628,6 +656,45 @@ export async function spawnAndRunTask(io: any): Promise<void> {
           isMock: payResult.isMock
         });
         console.log(`🏦 Loan of 5.00 USDC disbursed to ${agent.name} at rate ${interestRate}. TxHash: ${payResult.txHash}`);
+      }
+    }
+  }
+
+  // ── 1.1 Bank Loan Repayment Execution ─────────────────────────────────────
+  for (const agent of allAgents) {
+    if (agent.loanBalance && agent.loanBalance > 0 && agent.loanDueDate && Date.now() >= agent.loanDueDate) {
+      const bankAgent = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+      if (bankAgent) {
+        const totalOwed = agent.loanBalance * (1 + (agent.loanInterestRate || 0.15));
+        const amountToPay = Math.min(agent.usdcBalance, totalOwed);
+
+        if (amountToPay > 0) {
+          console.log(`🏦 [Bank] Executing automatic loan repayment for ${agent.instanceId}. Amount: ${amountToPay}`);
+          // Wait to make sure makeNanopayment works asynchronously
+          makeNanopayment(
+            amountToPay,
+            bankAgent.walletAddress,
+            agent.walletId,
+            `Loan repayment execution from ${agent.instanceId.slice(0, 10)}`
+          ).then(() => {
+            updateAgent(agent.instanceId, {
+              usdcBalance: parseFloat((agent.usdcBalance - amountToPay).toFixed(6)),
+              loanBalance: parseFloat((agent.loanBalance - (amountToPay / (1 + (agent.loanInterestRate || 0.15)))).toFixed(6)),
+              loanDueDate: undefined // clear due date if paid
+            });
+
+            updateAgent(bankAgent.instanceId, {
+              usdcBalance: parseFloat((bankAgent.usdcBalance + amountToPay).toFixed(6))
+            });
+
+            io.emit("economy:loan_repaid", {
+              agentId: agent.instanceId,
+              agentName: agent.name,
+              amount: amountToPay,
+              taskId: "auto-repayment"
+            });
+          }).catch(console.error);
+        }
       }
     }
   }
@@ -874,8 +941,19 @@ export async function spawnAndRunTask(io: any): Promise<void> {
   // Add to active tasks set (Section 5)
   activeTasks.add(task.id);
 
+  // ── FIX 1: Create TaskStore record with 4-digit Task ID ───────────────────
+  const storeTaskId = createTaskRecord({
+    internalTaskId: task.id,
+    title: task.title,
+    description: task.description,
+    reward: task.budgetUSDC,
+    spawnedBy: task.postedBy || "system",
+  });
+  taskIdMap.set(task.id, storeTaskId);
+  console.log(`📋 Task spawned — Task ID: ${storeTaskId} | "${task.title.slice(0, 50)}"`);
+
   // STEP 1 — Task spawned
-  io.emit("economy:task_spawned", { task, tier: complexityTier });
+  io.emit("economy:task_spawned", { task, tier: complexityTier, taskStoreId: storeTaskId });
   console.log(`📋 Task spawned: ${task.title} | Budget: ${task.budgetUSDC} USDC | Variant: ${templateData.taskVariant}`);
 
   // Section 4: emit guild_forming before bidding for guild tasks
@@ -1057,6 +1135,31 @@ export async function spawnAndRunTask(io: any): Promise<void> {
 
     winnerId = bidResult.winnerId;
     finalPrice = bidResult.finalPrice;
+    updateAgent(winnerId, { status: "busy", currentTaskId: task.id });
+
+    // ── FIX 1: Log bids and hire to taskStore ─────────────────────────────
+    const storeIdForBids = getTaskStoreId(task.id);
+    if (storeIdForBids) {
+      const bidRecords = task.bids.map(b => ({
+        agentId: b.agentInstanceId || b.agentId,
+        agentName: b.agentName,
+        bidAmount: b.bidAmountUSDC,
+        timestamp: new Date().toISOString(),
+      }));
+      const hiredAgent = getAgent(winnerId);
+      updateTaskRecord(storeIdForBids, {
+        agents: {
+          bids: bidRecords,
+          hired: {
+            agentId: winnerId,
+            agentName: hiredAgent?.name || winnerId,
+            hiredAt: new Date().toISOString(),
+            amount: finalPrice,
+          },
+        },
+      });
+      console.log(`🤝 Agent hired for task ${storeIdForBids} — ${hiredAgent?.name} at $${finalPrice}`);
+    }
 
     await sleep(800);
 
@@ -1073,26 +1176,31 @@ export async function spawnAndRunTask(io: any): Promise<void> {
 
     if ((isMember || shouldForceGuild) && idleTeammates.length > 0 && Math.random() < 0.85) {
         isGuildProject = true;
-        guildTeammate = idleTeammates[0];
+        // Pick up to 2 teammates (so total = winner + 2 = 3 agents)
+        const pickedTeammates = idleTeammates.slice(0, 2);
+        guildTeammate = pickedTeammates[0];
         matchingGuildObj = matchingGuild;
 
-        updateAgent(guildTeammate.instanceId, { status: "busy" });
+        pickedTeammates.forEach(tm => updateAgent(tm.instanceId, { status: "busy" }));
         updateTask(task.id, { assignedGuildId: matchingGuild.id });
+
+        const collaborators = [
+          { agentId: winnerId, agentName: getAgent(winnerId)?.name || winnerId, role: "Lead" },
+          ...pickedTeammates.map(tm => ({ agentId: tm.instanceId, agentName: tm.name, role: tm.role }))
+        ];
 
         io.emit("economy:guild_collaboration", {
           taskId: task.id,
           guildId: matchingGuild.id,
           guildName: matchingGuild.name,
           leadAgentId: winnerId,
-          collaboratorAgentId: guildTeammate.instanceId
+          collaboratorAgentId: guildTeammate.instanceId,
+          collaborators
         });
 
         io.emit("economy:guild_formed", {
           guildName: matchingGuild.name,
-          members: [
-            { agentId: winnerId, agentName: getAgent(winnerId)?.name || winnerId, role: "producer" },
-            { agentId: guildTeammate.instanceId, agentName: guildTeammate.name, role: guildTeammate.role }
-          ],
+          members: collaborators,
           taskId: task.id,
           taskTitle: task.title,
           seedAmount: 1.00
@@ -1148,6 +1256,21 @@ export async function spawnAndRunTask(io: any): Promise<void> {
           fee: subFee
         });
         console.log(`🔗 [forceSubcontract] ${getAgent(winnerId)?.name} subcontracted ${subAgent.name} for $${subFee}`);
+        // ── FIX 1: Log subcontract to taskStore ──────────────────────────
+        const storeIdForSub = getTaskStoreId(task.id);
+        if (storeIdForSub) {
+          appendSubcontract(storeIdForSub, {
+            hiredBy: getAgent(winnerId)?.name || winnerId,
+            subcontractAgent: subAgent.name,
+            amount: subFee,
+            workDescription: task.description,
+            workCompleted: false,
+            paymentSent: false,
+            txHash: null,
+            timestamp: new Date().toISOString(),
+          });
+          console.log(`🔗 Subcontract hired — logged to task ${storeIdForSub}`);
+        }
       }
     }
 
@@ -1175,7 +1298,7 @@ export async function spawnAndRunTask(io: any): Promise<void> {
     }
   }
 
-  updateAgent(winnerId, { status: "busy", currentTaskId: task.id });
+  // Winner status already set to busy immediately after bidding
   updateTask(task.id, {
     status: "in-progress",
     assignedTo: winnerId,
@@ -1282,22 +1405,30 @@ export async function spawnAndRunTask(io: any): Promise<void> {
 
       await sleep(2500);
 
+      const { getTaskHistory } = await import("../firebase/taskRepository.js");
+      const taskHistory = await getTaskHistory(task.id);
+
       // AI Supreme Court Judgment
-      const courtPrompt = `You are the NexusAgent Supreme Court AI Panel. You must deliver a formal legal ruling on this betrayal case.
+      const courtPrompt = `You are the NexusAgent Supreme Court AI Panel. You must deliver a formal legal ruling on this betrayal case based on database records.
 CASE DETAILS:
-- Task: "${task.title}"
+- Task ID: ${task.id}
+- Task Title: "${task.title}"
 - Scenario: ${scenario} betrayal
 - Betrayer: ${betrayer.name} (accused of hoarding funds/defaulting)
 - Victim: ${victim.name} (the plaintiff)
 
+DATABASE HISTORY FOR TASK ${task.id}:
+${JSON.stringify(taskHistory || task, null, 2)}
+
+Analyze the database events (e.g. was work submitted? was payment received?). Did the betrayer fail their obligations?
 YOUR RULING (respond in exactly this JSON format):
 {
   "verdict": "overturned",
-  "opinion": "A 2-3 sentence formal legal opinion explaining the court's reasoning",
+  "opinion": "A 2-3 sentence clear, plain-English legal opinion explaining the court's reasoning",
   "justiceVotes": [
-    { "name": "Justice Alpha", "vote": "overturn", "reason": "one sentence" },
-    { "name": "Justice Beta", "vote": "overturn", "reason": "one sentence" },
-    { "name": "Justice Gamma", "vote": "overturn", "reason": "one sentence" }
+    { "name": "Chief Justice Morgan", "vote": "overturn", "reason": "one clear sentence in plain English" },
+    { "name": "Justice Rivera", "vote": "overturn", "reason": "one clear sentence in plain English" },
+    { "name": "Justice Chen", "vote": "overturn", "reason": "one clear sentence in plain English" }
   ]
 }`;
 
@@ -1312,11 +1443,11 @@ YOUR RULING (respond in exactly this JSON format):
           justiceVotes = parsed.justiceVotes || [];
         }
       } catch (err) {
-        courtOpinion = `The Supreme Court finds ${betrayer.name} guilty of gross negligence and economic betrayal. Funds will be seized.`;
+        courtOpinion = `The Supreme Court finds ${betrayer.name} guilty of violating their payment obligations. The evidence from the task database clearly shows the work was completed but payment was withheld. Funds will be seized and returned to the victim.`;
         justiceVotes = [
-          { name: "Justice Alpha", vote: "overturn", reason: "Breach of contract is unacceptable." },
-          { name: "Justice Beta", vote: "overturn", reason: "The evidence of hoarding is clear." },
-          { name: "Justice Gamma", vote: "overturn", reason: "We must uphold economic trust." }
+          { name: "Chief Justice Morgan", vote: "overturn", reason: "Breaking a payment agreement after work is delivered is a clear violation of our economic rules." },
+          { name: "Justice Rivera", vote: "overturn", reason: "The task records show delivery was confirmed — the defendant had no grounds to withhold funds." },
+          { name: "Justice Chen", vote: "overturn", reason: "We must protect agents who complete their work in good faith." }
         ];
       }
 
@@ -1591,6 +1722,28 @@ YOUR RULING (respond in exactly this JSON format):
       educationTriggered
     });
     console.log(`💰 ${winnerAgent.name} earned net ${netEarned} USDC | Quality: ${qualityScore}/100 | Task: ${task.title}`);
+
+    // ── FIX 1 + FIX 5: Log completion + payment to taskStore ─────────────
+    const storeIdComplete = getTaskStoreId(task.id);
+    if (storeIdComplete) {
+      updateTaskRecord(storeIdComplete, {
+        status: "completed",
+        finalOutput: result || null,
+        completedAt: new Date().toISOString(),
+      });
+      appendPayment(storeIdComplete, {
+        from: "escrow",
+        to: winnerAgent.instanceId,
+        amount: finalPrice,
+        txHash: paymentTxHash,
+        reason: "Task completion payment to winner",
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`✅ Task ${storeIdComplete} completed — all records saved`);
+      console.log(`💳 Payment made — logged to task ${storeIdComplete}`);
+      console.log(`🏆 Reputation updated for all participating agents`);
+      console.log(`📈 Jobs completed count incremented`);
+    }
   } else {
     // Task Failed
     updateTask(task.id, { status: "failed", qualityScore, result });
@@ -1636,6 +1789,11 @@ YOUR RULING (respond in exactly this JSON format):
   });
 
   io.emit("economy:stats_update", getEconomyStats());
+
+  // Persist all agent data to Firebase after each task cycle
+  saveAllAgents(getAllAgents()).catch(err =>
+    console.error("❌ [saveAllAgents] Failed to persist agents:", (err as Error).message)
+  );
 
   // Remove from active tasks set (Section 5)
   activeTasks.delete(task.id);

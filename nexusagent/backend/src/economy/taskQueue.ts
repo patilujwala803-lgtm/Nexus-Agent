@@ -24,7 +24,7 @@ export function createTask(data: Omit<Task,
   console.log(`➕ [createTask] Starting creation of task: "${data.title}"...`);
   
   const task: Task = {
-    id: crypto.randomUUID(),
+    id: Math.floor(1000 + Math.random() * 9000).toString(),
     title: data.title,
     description: data.description,
     requiredSkill: data.requiredSkill,

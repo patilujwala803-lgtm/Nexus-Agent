@@ -117,6 +117,12 @@ export interface FlowState {
   courtVerdict?: 'overturned' | 'upheld' | null;
   justiceVotes?: Array<{ name: string; vote: string; reason: string }>;
   juryVotes?: Array<{ jurorId: string; jurorName: string; approve: boolean }>;
+  // Guild multi-agent fields
+  guildCollaborators?: Array<{ agentId: string; agentName: string; role: string }>;
+  // Subcontract display
+  subcontractAgentId?: string | null;
+  subcontractAgentName?: string | null;
+  subcontractFee?: number | null;
 }
 
 

@@ -68,6 +68,18 @@ export function createEconomyRouter(io: any): Router {
     res.status(200).json(recentTasks);
   });
 
+  // GET /history
+  router.get("/history", async (_req: Request, res: Response) => {
+    console.log("📡 [GET /history] Endpoint handler started...");
+    
+    // Import taskRepository dynamically to avoid circular deps if any
+    const { getAllTasks } = await import("../firebase/taskRepository.js");
+    const history = await getAllTasks();
+    
+    console.log(`📡 [GET /history] Endpoint handler finished: returned ${history.length} tasks.`);
+    res.status(200).json(history);
+  });
+
   // GET /stats
   router.get("/stats", (_req: Request, res: Response) => {
     console.log("📡 [GET /stats] Endpoint handler started...");

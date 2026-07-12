@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import type { Bounty, CreateBountyPayload } from '@/lib/api';
 import { createBounty, triggerDemo, processBounty } from '@/lib/api';
-import ResultModal from './ResultModal';
+// Removed ResultModal as output will be shown in the right sidebar
 
 // ── Status badge config ───────────────────────────────────────────────────────
 
@@ -29,12 +29,13 @@ interface BountyBoardProps {
   onBountyCreated:  (bounty: Bounty) => void;
   onDemoStarted:    (bountyId: string) => void;
   onRefresh:        () => void;
+  onBountySelect:   (bounty: Bounty) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BountyBoard({
-  bounties, onBountyCreated, onDemoStarted, onRefresh,
+  bounties, onBountyCreated, onDemoStarted, onRefresh, onBountySelect
 }: BountyBoardProps) {
   const [title, setTitle]         = useState('');
   const [desc, setDesc]           = useState('');
@@ -42,7 +43,6 @@ export default function BountyBoard({
   const [posting, setPosting]     = useState(false);
   const [postError, setPostError] = useState('');
   const [demoLoading, setDemoLoading] = useState(false);
-  const [selectedBounty, setSelectedBounty] = useState<Bounty | null>(null);
 
   // ── Post new bounty ───────────────────────────────────────────────────────
   async function handlePost(e: React.FormEvent) {
@@ -178,7 +178,7 @@ export default function BountyBoard({
             return (
               <div
                 key={b.id}
-                onClick={() => b.status === 'completed' && setSelectedBounty(b)}
+                onClick={() => b.status === 'completed' && onBountySelect(b)}
                 className={`
                   rounded-xl border border-slate-200 bg-white p-4 shadow-sm
                   transition-all duration-200
@@ -225,9 +225,6 @@ export default function BountyBoard({
         </div>
       </div>
 
-      {selectedBounty && (
-        <ResultModal bounty={selectedBounty} onClose={() => setSelectedBounty(null)} />
-      )}
     </div>
   );
 }

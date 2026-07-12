@@ -58,11 +58,11 @@ function createAgentRecord(params: {
     walletId,
     walletAddress,
     usdcBalance: params.usdcBalance,
-    reputation: 50,
+    reputation: 0,         // FIX 5: Reset — all agents start at 0
     status: "idle",
-    totalEarned: 0,
-    totalSpent: 0,
-    jobsCompleted: 0,
+    totalEarned: 0,        // FIX 5: Reset
+    totalSpent: 0,         // FIX 5: Reset
+    jobsCompleted: 0,      // FIX 5: Reset
     jobsFailed: 0,
     currentTaskId: null,
     bidStrategy: params.bidStrategy,

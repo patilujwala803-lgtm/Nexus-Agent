@@ -17,6 +17,11 @@ import { WorkSidebar } from './components/WorkSidebar';
 import { AgentSidebar } from './components/AgentSidebar';
 import { HistoryPanel } from './components/HistoryPanel';
 import { AnnouncementBanner } from './components/AnnouncementBanner';
+import { AnalyticsSidebar } from './components/AnalyticsSidebar';
+import { BankSidebar } from './components/BankSidebar';
+import { EducationCard } from './components/EducationCard';
+import SupremeCourt from './components/SupremeCourt';
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -53,6 +58,7 @@ export default function EconomyCanvasPage() {
     isConnected,
     addToast,
     announcements,
+    educatingAgents,
   } = useEconomySocket(addOrUpdateFlow);
 
   // Agent registry cache for AgentSidebar
@@ -65,7 +71,11 @@ export default function EconomyCanvasPage() {
     taskId: string;
   } | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState<boolean>(false);
+  const [isBankOpen, setIsBankOpen] = useState<boolean>(false);
+  const [isCourtOpen, setIsCourtOpen] = useState<boolean>(false);
   const [isTogglingEconomy, setIsTogglingEconomy] = useState<boolean>(false);
+
 
   // Fetch all agents on mount & update agentsMap
   const refreshAgents = useCallback(async () => {
@@ -73,9 +83,11 @@ export default function EconomyCanvasPage() {
       const res = await fetch(`${API_URL}/api/economy/agents`);
       if (res.ok) {
         const data = await res.json();
-        if (data && Array.isArray(data.agents)) {
+        // API returns a flat array of agents
+        const agentList = Array.isArray(data) ? data : Array.isArray(data.agents) ? data.agents : [];
+        if (agentList.length > 0) {
           const map = new Map<string, Agent>();
-          data.agents.forEach((ag: Agent) => map.set(ag.instanceId, ag));
+          agentList.forEach((ag: Agent) => map.set(ag.instanceId, ag));
           setAgentsMap(map);
         }
       }
@@ -86,7 +98,7 @@ export default function EconomyCanvasPage() {
 
   useEffect(() => {
     refreshAgents();
-    const interval = setInterval(refreshAgents, 10000);
+    const interval = setInterval(refreshAgents, 5000); // 5s for more real-time agent stats
     return () => clearInterval(interval);
   }, [refreshAgents]);
 
@@ -154,7 +166,36 @@ export default function EconomyCanvasPage() {
     setSelectedSidebar(null);
     setSelectedAgent(null);
     setIsHistoryOpen((prev) => !prev);
+    setIsAnalyticsOpen(false);
+    setIsBankOpen(false);
   }, []);
+
+  const handleAnalyticsButtonClick = useCallback(() => {
+    setSelectedSidebar(null);
+    setSelectedAgent(null);
+    setIsAnalyticsOpen((prev) => !prev);
+    setIsHistoryOpen(false);
+    setIsBankOpen(false);
+  }, []);
+
+  const handleBankButtonClick = useCallback(() => {
+    setSelectedSidebar(null);
+    setSelectedAgent(null);
+    setIsBankOpen((prev) => !prev);
+    setIsHistoryOpen(false);
+    setIsAnalyticsOpen(false);
+    setIsCourtOpen(false);
+  }, []);
+
+  const handleCourtButtonClick = useCallback(() => {
+    setSelectedSidebar(null);
+    setSelectedAgent(null);
+    setIsCourtOpen((prev) => !prev);
+    setIsHistoryOpen(false);
+    setIsAnalyticsOpen(false);
+    setIsBankOpen(false);
+  }, []);
+
 
   // Economy Start / Stop API handlers
   const handleToggleEconomy = async () => {
@@ -180,7 +221,7 @@ export default function EconomyCanvasPage() {
   };
 
   // Y Coordinate Calculations (CRITICAL FIX 2)
-  const activeSectionHeight = Math.max(1, activeFlowIds.length) * 240;
+  const activeSectionHeight = Math.max(1, activeFlowIds.length) * 320;
   const completedSectionStartY = activeSectionHeight + 180;
 
   return (
@@ -193,7 +234,7 @@ export default function EconomyCanvasPage() {
         style={{
           backgroundImage: 'radial-gradient(rgba(99,102,241,0.15) 1.5px, transparent 1.5px)',
           backgroundSize: `${24 * zoomLevel}px ${24 * zoomLevel}px`,
-          background: 'var(--bg-canvas)',
+          backgroundColor: 'var(--bg-canvas)',
           backgroundBlendMode: 'screen',
         }}
       >
@@ -212,7 +253,7 @@ export default function EconomyCanvasPage() {
           {activeFlowIds.map((id, index) => {
             const flow = flows.get(id);
             if (!flow) return null;
-            const flowY = 100 + index * 240;
+            const flowY = 100 + index * 320;
             return (
               <FlowDiagram
                 key={flow.taskId}
@@ -247,7 +288,7 @@ export default function EconomyCanvasPage() {
               {completedFlowIds.map((id, index) => {
                 const flow = flows.get(id);
                 if (!flow) return null;
-                const flowY = completedSectionStartY + index * 200;
+                const flowY = completedSectionStartY + index * 320;
                 return (
                   <FlowDiagram
                     key={flow.taskId}
@@ -262,6 +303,16 @@ export default function EconomyCanvasPage() {
               })}
             </>
           )}
+
+          {/* Education Cards for studying agents */}
+          {educatingAgents.map((student, idx) => (
+            <EducationCard 
+              key={student.agentId} 
+              student={student} 
+              cardX={1300} 
+              cardY={100 + idx * 280} 
+            />
+          ))}
 
           {/* Empty Canvas State */}
           {activeFlowIds.length === 0 && completedFlowIds.length === 0 && (
@@ -405,6 +456,57 @@ export default function EconomyCanvasPage() {
         🕐
       </button>
 
+      {/* Floating Supreme Court Button (Bottom Left, offset) */}
+      <button
+        onClick={handleCourtButtonClick}
+        className="fixed bottom-6 left-[222px] z-40 w-[52px] h-[52px] rounded-full flex items-center justify-center text-xl hover:scale-105 transition-all cursor-pointer pointer-events-auto"
+        title="Supreme Court"
+        style={{
+          background: isCourtOpen ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.8)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: isCourtOpen ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(99,102,241,0.15)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+          color: isCourtOpen ? '#ef4444' : '#6366f1',
+        }}
+      >
+        ⚖️
+      </button>
+
+      {/* Floating Analytics Button (Bottom Left, offset) */}
+      <button
+        onClick={handleAnalyticsButtonClick}
+        className="fixed bottom-6 left-[90px] z-40 w-[52px] h-[52px] rounded-full flex items-center justify-center text-xl hover:scale-105 transition-all cursor-pointer pointer-events-auto"
+        title="Economy Analytics"
+        style={{
+          background: 'rgba(255,255,255,0.8)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(99,102,241,0.15)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+          color: '#6366f1',
+        }}
+      >
+        📊
+      </button>
+
+      {/* Floating Bank Button (Bottom Left, offset) */}
+      <button
+        onClick={handleBankButtonClick}
+        className="fixed bottom-6 left-[156px] z-40 w-[52px] h-[52px] rounded-full flex items-center justify-center text-xl hover:scale-105 transition-all cursor-pointer pointer-events-auto"
+        title="Central Bank"
+        style={{
+          background: 'rgba(255,255,255,0.8)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(99,102,241,0.15)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+          color: '#6366f1',
+        }}
+      >
+        🏦
+      </button>
+
       {/* ── LAYER 3: Interactive Sidebars & History Panel ──────────────────── */}
       <TaskSidebar
         isOpen={selectedSidebar?.type === 'task'}
@@ -437,6 +539,45 @@ export default function EconomyCanvasPage() {
         onClose={() => setIsHistoryOpen(false)}
         allFlows={allFlows}
       />
+
+      <AnalyticsSidebar
+        isOpen={isAnalyticsOpen}
+        onClose={() => setIsAnalyticsOpen(false)}
+        stats={stats}
+      />
+
+      <BankSidebar
+        isOpen={isBankOpen}
+        onClose={() => setIsBankOpen(false)}
+      />
+
+      {/* Supreme Court Panel */}
+      {isCourtOpen && (
+        <div
+          className="fixed top-0 right-0 h-full z-50 flex flex-col overflow-hidden pointer-events-auto"
+          style={{
+            width: '340px',
+            background: 'rgba(8,8,20,0.92)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderLeft: '1px solid rgba(239,68,68,0.2)',
+            boxShadow: '-8px 0 40px rgba(239,68,68,0.08)',
+          }}
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
+            <span className="text-white font-bold text-sm tracking-wide">⚖️ Supreme Court</span>
+            <button
+              onClick={() => setIsCourtOpen(false)}
+              className="text-slate-500 hover:text-white transition-colors text-base w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-4">
+            <SupremeCourt />
+          </div>
+        </div>
+      )}
 
       {/* Section 8: Economy Announcements */}
       <AnnouncementBanner announcements={announcements} />

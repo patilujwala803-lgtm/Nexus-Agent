@@ -30,6 +30,7 @@ export interface Agent {
   consecutiveWins: number;       // tracks popularity/high-demand
   loanBalance: number;           // loan amount to repay
   loanInterestRate: number;      // credit score determined rate
+  loanDueDate?: number;          // when the loan should be automatically repaid
   qualityOffset: number;         // permanent improvement from education
   certifications: string[];      // dynamic skill certs
   isHighDefaultRisk: boolean;    // collateral default seizure flag

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FlowState } from '../types';
 
 interface HistoryPanelProps {
@@ -10,8 +10,54 @@ interface HistoryPanelProps {
 export const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, allFlows }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'completed' | 'failed'>('all');
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [historyTasks, setHistoryTasks] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const filteredFlows = allFlows.filter((flow) => {
+  useEffect(() => {
+    if (isOpen) {
+      setIsLoading(true);
+      const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+      fetch(`${API_URL}/history`)
+        .then((res) => res.json())
+        .then((data) => {
+          setHistoryTasks(data || []);
+        })
+        .catch((err) => console.error("Failed to fetch history:", err))
+        .finally(() => setIsLoading(false));
+    }
+  }, [isOpen]);
+
+  // Merge live session flows (allFlows) with historyTasks (from db) to show everything
+  const combinedHistory = React.useMemo(() => {
+    const map = new Map<string, any>();
+    
+    // Add history tasks (these are backend Task docs)
+    historyTasks.forEach((t) => {
+      map.set(t.id, {
+        taskId: t.id,
+        task: t,
+        status: t.status,
+        qualityScore: t.qualityScore,
+        result: t.result,
+        bids: t.bids || [],
+        paymentTxHash: t.paymentTxHash,
+        workerAgent: { name: t.assignedAgentName || 'Unknown' }
+      });
+    });
+
+    // Override with any live flows from the current session
+    allFlows.forEach((f) => {
+      map.set(f.taskId, f);
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+      const timeA = a.task.createdAt || 0;
+      const timeB = b.task.createdAt || 0;
+      return timeB - timeA;
+    });
+  }, [allFlows, historyTasks]);
+
+  const filteredFlows = combinedHistory.filter((flow) => {
     if (activeTab === 'completed') return flow.status === 'complete';
     if (activeTab === 'failed') return flow.status === 'failed';
     return true;
@@ -46,7 +92,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, all
             <div>
               <h3 className="font-semibold text-base text-slate-800">Session History</h3>
               <p className="text-xs text-slate-400">
-                {allFlows.length} {allFlows.length === 1 ? 'task' : 'tasks'} recorded this session
+                {combinedHistory.length} {combinedHistory.length === 1 ? 'task' : 'tasks'} recorded
               </p>
             </div>
           </div>
@@ -83,7 +129,11 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, all
 
         {/* History List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {filteredFlows.length === 0 ? (
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
+              Loading history...
+            </div>
+          ) : filteredFlows.length === 0 ? (
             <div className="text-center py-16 text-slate-400 space-y-2">
               <span className="text-4xl block">🤖</span>
               <p className="text-xs font-medium">
@@ -109,7 +159,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, all
                   ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
                   : 'bg-amber-100 text-amber-800 border-amber-200';
 
-              const acceptedBid = flow.bids.find((b) => b.status === 'accepted');
+              const acceptedBid = flow.bids.find((b: any) => b.status === 'accepted');
               const finalPrice = acceptedBid ? acceptedBid.bidAmountUSDC : flow.task.budgetUSDC;
 
               return (
@@ -198,7 +248,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, all
                             Submitted Bids ({flow.bids.length})
                           </span>
                           <div className="space-y-1">
-                            {flow.bids.map((b, i) => (
+                            {flow.bids.map((b: any, i: any) => (
                               <div
                                 key={b.id || i}
                                 className="flex justify-between items-center bg-white px-2.5 py-1.5 rounded border border-slate-200 text-[11px]"

@@ -33,10 +33,10 @@ export const WorkSidebar: React.FC<WorkSidebarProps> = ({
     <SidebarWrapper
       isOpen={isOpen}
       onClose={onClose}
-      title={isCourtFlow ? '⚖️ Supreme Court' : isGuildFlow ? '🏛️ Guild Work' : 'Agent Work Output'}
+      title={isCourtFlow && courtVerdict ? '⚖️ Supreme Court Appeal' : isCourtFlow ? '⚖️ Court Task' : isGuildFlow ? '🏛️ Guild Work' : 'Agent Work Output'}
       subtitle={`Task: "${task.title.replace(/\[(EASY|MEDIUM|COMPLEX)\]/gi, '').trim()}"`}
       titleIcon={isCourtFlow ? '⚖️' : isGuildFlow ? '🏛️' : '⚙️'}
-      accentColor={isCourtFlow ? '#f59e0b' : isGuildFlow ? '#8b5cf6' : '#6366f1'}
+      accentColor={isCourtFlow && courtVerdict ? '#f59e0b' : isCourtFlow ? '#fbbf24' : isGuildFlow ? '#8b5cf6' : '#6366f1'}
     >
       {/* SECTION 1 — Worker Header */}
         <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
@@ -154,8 +154,8 @@ export const WorkSidebar: React.FC<WorkSidebarProps> = ({
         </div>
       </div>
 
-      {/* SECTION 5 — Supreme Court Judgment (Court variant only) */}
-      {isCourtFlow && (
+      {/* SECTION 5 — Supreme Court Judgment (Only if verdict exists) */}
+      {isCourtFlow && courtVerdict && (
         <>
           <div className="border-t border-amber-100 my-3" />
           <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(245,158,11,0.3)', background: 'linear-gradient(135deg,rgba(245,158,11,0.04),rgba(234,88,12,0.03))' }}>
