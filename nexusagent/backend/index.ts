@@ -381,6 +381,7 @@ async function main() {
       console.log(`🔥 Restoring stats for ${savedAgents.length} agents from Firebase`);
       for (const saved of savedAgents) {
         updateAgent(saved.instanceId, {
+          usdcBalance: (saved as any).usdcBalance ?? 0.05,   // ← THE FIX: was missing!
           reputation: saved.reputation ?? 0,
           totalEarned: saved.totalEarned ?? 0,
           totalSpent: saved.totalSpent ?? 0,
