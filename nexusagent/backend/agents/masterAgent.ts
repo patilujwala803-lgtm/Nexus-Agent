@@ -133,13 +133,21 @@ Provide a comprehensive, highly-detailed response. Do not include introductory c
   
   const finalData = {
     bountyId: bounty.id,
+    winner: winner.instanceId,       // needed by PaymentLog
     agentName: winner.name,
+    reward: bounty.reward,           // needed by PaymentLog
     earned: bounty.reward,
+    totalUsdcMoved: bounty.reward,   // shown in live feed
     txHash: txHash,
+    rewardTxHash: txHash,
     content: content
   };
 
   emit('bounty_completed', finalData);
+  emit('agentActivity', {
+    event: 'bounty_completed',       // PaymentLog listens on agentActivity with this event
+    data: finalData
+  });
   emit('agentActivity', {
     event: 'economy:task_complete',
     data: finalData

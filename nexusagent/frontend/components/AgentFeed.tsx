@@ -119,8 +119,8 @@ function buildMessage(event: string, data: Record<string, any>): string {
     case 'submissions_ready':    return `Submissions ready — Alpha: "${data.alphaTitle ?? ''}" vs Beta: "${data.betaTitle ?? ''}"`;
     case 'judging_started':      return `Judge evaluating submissions for ${String(data.bountyId ?? '').slice(0, 8)}…`;
     case 'compliance_checked':   return `Compliance: Agent A ${data.complianceA?.approved ? '✅' : '❌'} | Agent B ${data.complianceB?.approved ? '✅' : '❌'}`;
-    case 'bounty_won':           return `🏆 Winner: Agent ${String(data.winner ?? '').toUpperCase()}! Reward: $${data.reward ?? data.amount ?? '?'} USDC`;
-    case 'bounty_completed':     return `Bounty complete! Winner: ${String(data.winner ?? '').toUpperCase()} | USDC moved: $${Number(data.totalUsdcMoved ?? 0).toFixed(4)}`;
+    case 'bounty_won':           return `🏆 Task won! Reward: $${data.reward ?? data.amount ?? '?'} USDC`;
+    case 'bounty_completed':     return `✅ Bounty complete! USDC moved: $${Number(data.totalUsdcMoved ?? data.earned ?? 0).toFixed(4)}`;
     case 'reward_released':      return `Reward released: $${data.amount ?? '?'} USDC → ${String(data.winner ?? '')} tx: ${String(data.txHash ?? '').slice(0, 14)}…`;
     case 'budget_allocated':     return `Budget allocated: Research 25% | Writer 30% | DataAnalyst 20% | FactCheck 15% | Reserve 10%`;
     case 'wallet_refilled':      return data.refilled?.length > 0

@@ -241,7 +241,7 @@ export default function HomePage() {
                       <div className="flex justify-between items-center mb-3 border-b pb-2">
                         <h3 className="text-sm font-bold text-slate-800">Result: {selectedBounty.title}</h3>
                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-bold">
-                          Winner: {selectedBounty.winner || 'Agent'}
+                          ✅ Completed
                         </span>
                       </div>
                       <div className="text-xs text-slate-700 whitespace-pre-wrap font-medium">
