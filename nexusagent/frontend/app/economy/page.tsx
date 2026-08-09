@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { Agent, FlowState } from './types';
 import { useCanvasControls } from './hooks/useCanvasControls';
 import { useSessionHistory } from './hooks/useSessionHistory';
@@ -372,8 +373,26 @@ export default function EconomyCanvasPage() {
 
       <Toast toasts={toasts} />
 
-      {/* Economy Toggle Button (Top Left) */}
+      {/* Economy Toggle + Back Button (Top Left) */}
       <div className="fixed top-4 left-6 z-40 flex items-center gap-3">
+        {/* Back to Home */}
+        <Link
+          href="/"
+          className="px-4 py-2.5 rounded-full font-bold text-xs flex items-center gap-2 cursor-pointer transition-all hover:scale-105"
+          style={{
+            background: 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(99,102,241,0.25)',
+            color: '#6366f1',
+            boxShadow: '0 4px 16px rgba(99,102,241,0.12)',
+            fontFamily: "'Inter', sans-serif",
+          }}
+        >
+          <span>←</span>
+          <span>Home</span>
+        </Link>
+
         <button
           onClick={handleToggleEconomy}
           disabled={isTogglingEconomy}
@@ -403,6 +422,7 @@ export default function EconomyCanvasPage() {
           </span>
         )}
       </div>
+
 
       {/* Zoom Controls (Bottom Right) */}
       <div

@@ -48,6 +48,99 @@ function logPaymentToTask(internalId: string, from: string, to: string, amount: 
   appendPayment(storeId, { from, to, amount, txHash, reason, timestamp: new Date().toISOString() });
 }
 
+// ── Pool Agent Round-Robin Counters ───────────────────────────────────────────
+// Ensures all instances of each pool type get equal work distribution
+const poolCounters: Record<string, number> = {
+  bank: 0,
+  escrow: 0,
+  hiring: 0,
+  broker: 0,
+  judge: 0,
+  treasury: 0,
+};
+
+// Get the next pool agent in round-robin order (skips busy agents)
+function getRoundRobinPoolAgent(poolType: string): Agent | null {
+  const allAgents = getAllAgents();
+  const poolAgents = allAgents.filter(a => a.poolType === poolType);
+  if (poolAgents.length === 0) return null;
+
+  // Try up to poolAgents.length times to find an idle agent
+  for (let attempt = 0; attempt < poolAgents.length; attempt++) {
+    const idx = poolCounters[poolType] % poolAgents.length;
+    poolCounters[poolType]++;
+    const agent = poolAgents[idx];
+    if (agent && agent.status === "idle") {
+      console.log(`🔄 [RoundRobin] Selected ${agent.instanceId} (${poolType} pool, slot ${idx}/${poolAgents.length - 1})`);
+      return agent;
+    }
+  }
+
+  // All busy — fall back to any idle one
+  const idle = poolAgents.find(a => a.status === "idle");
+  if (idle) console.log(`🔄 [RoundRobin] Fallback idle agent: ${idle.instanceId} for ${poolType}`);
+  return idle || null;
+}
+
+// Bank-specific selection with differentiated terms
+// Bank 1: low interest (8%), long term (10 min)
+// Bank 2: high interest (20%), short term (3 min)
+interface BankTerms {
+  agent: Agent;
+  interestRate: number;
+  dueDateMs: number; // duration in ms from now
+  bankLabel: string;
+}
+
+function selectBank(preferLowInterest: boolean = true): BankTerms | null {
+  // Round-robin between bank-agent-1 and bank-agent-2
+  const allAgents = getAllAgents();
+  const bank1 = allAgents.find(a => a.instanceId === "bank-agent-1");
+  const bank2 = allAgents.find(a => a.instanceId === "bank-agent-2");
+
+  // Try both banks, pick by counter
+  const bankIdx = poolCounters["bank"] % 2;
+  poolCounters["bank"]++;
+
+  let primary: Agent | null = null;
+  let secondary: Agent | null = null;
+
+  if (bankIdx === 0) {
+    primary = bank1 || null;
+    secondary = bank2 || null;
+  } else {
+    primary = bank2 || null;
+    secondary = bank1 || null;
+  }
+
+  const chosen = (primary?.status === "idle" ? primary : (secondary?.status === "idle" ? secondary : primary)) || null;
+  if (!chosen) return null;
+
+  const isBank2 = chosen.instanceId === "bank-agent-2";
+  return {
+    agent: chosen,
+    interestRate: isBank2 ? 0.20 : 0.08,           // Bank2 = 20%, Bank1 = 8%
+    dueDateMs: isBank2 ? 3 * 60 * 1000 : 10 * 60 * 1000, // Bank2 = 3min, Bank1 = 10min
+    bankLabel: isBank2 ? "Bank 2 (High-Rate, 3min)" : "Bank 1 (Low-Rate, 10min)",
+  };
+}
+
+// ── Winner Lock: tracks which agents are currently working ───────────────
+const winnerLock: Set<string> = new Set();
+
+// ── Bidding Mutex: serializes agent-selection so concurrent tasks never race ───
+// Only ONE task at a time goes through the eligible-agents → bid → lock phase.
+// Actual work execution still runs concurrently (outside the mutex).
+let _biddingMutexTail: Promise<void> = Promise.resolve();
+
+function acquireBiddingSlot(): Promise<() => void> {
+  let release!: () => void;
+  const prevTail = _biddingMutexTail;
+  _biddingMutexTail = new Promise<void>(r => { release = r; });
+  // Wait for all previous holders to finish, then return the release fn
+  return prevTail.then(() => release);
+}
+
 
 console.log("🌐 [economyLoop] Module loading started (Phase 7 + Section 4/5/6 upgrades)...");
 
@@ -392,7 +485,7 @@ let ioInstance: any = null;
 let totalLoansDisbursed: number = 0;
 
 // Section 5: Concurrent task management
-const MAX_CONCURRENT_TASKS = 4;
+const MAX_CONCURRENT_TASKS = 6; // Allow more concurrent tasks so all agent types get work
 const activeTasks: Set<string> = new Set();
 
 // Education system: tracks agents currently studying (max 7)
@@ -474,6 +567,28 @@ export function startEconomy(io: any): void {
     return;
   }
 
+  // ── Reset all state so each run starts completely fresh ──────────────────
+  // Clear persistent guild history (prevents same Alex+Blake from being reused)
+  GUILDS.length = 0;
+  // Clear all locks
+  winnerLock.clear();
+  // Reset mutex
+  _biddingMutexTail = Promise.resolve();
+  // Clear active tasks
+  activeTasks.clear();
+  // Reset ALL agents back to idle (clears stale "busy" statuses from previous run)
+  try {
+    const allAgentsForReset = getAllAgents();
+    for (const agent of allAgentsForReset) {
+      if (agent.status === 'busy') {
+        updateAgent(agent.instanceId, { status: 'idle', currentTaskId: undefined });
+      }
+    }
+    console.log(`🔄 [startEconomy] Reset ${allAgentsForReset.filter(a => a.status !== 'idle').length} agents → idle`);
+  } catch (e) {
+    console.warn('⚠️ [startEconomy] Could not reset agent statuses:', e);
+  }
+
   isRunning = true;
   startedAt = Date.now();
   ioInstance = io;
@@ -524,6 +639,14 @@ export function stopEconomy(): void {
     clearInterval(statsHeartbeatInterval);
     statsHeartbeatInterval = null;
   }
+
+  // Clear all locks and state so the next start is fresh
+  winnerLock.clear();
+  activeTasks.clear();
+  GUILDS.length = 0;
+  // Reset mutex tail so fresh runs don't wait for any stale slot
+  _biddingMutexTail = Promise.resolve();
+  console.log("🔓 [stopEconomy] All locks and guilds cleared.");
 
   ioInstance?.emit("economy:stopped", {});
   console.log("🛑 Economy STOPPED");
@@ -617,11 +740,12 @@ export async function spawnAndRunTask(io: any): Promise<void> {
   const allAgents = getAllAgents();
   for (const agent of allAgents) {
     if (agent.status === "idle" && agent.usdcBalance < 2.00 && agent.role === "producer" && agent.loanBalance === 0) {
-      const bankAgent = getFreePoolAgent("bank");
-      if (bankAgent) {
-        let interestRate = 0.15;
-        if (agent.reputation >= 90) interestRate = 0.05;
-        else if (agent.reputation < 50) interestRate = 0.25;
+      // Use round-robin bank selection with differentiated terms
+      const bankTerms = selectBank();
+      if (bankTerms) {
+        const bankAgent = bankTerms.agent;
+        const interestRate = bankTerms.interestRate;
+        const dueDate = Date.now() + bankTerms.dueDateMs;
 
         updateAgent(bankAgent.instanceId, { status: "busy" });
 
@@ -629,14 +753,14 @@ export async function spawnAndRunTask(io: any): Promise<void> {
           5.00,
           agent.walletAddress,
           bankAgent.walletId,
-          `Disburse loan: Bank to ${agent.instanceId.slice(0, 10)}`
+          `Loan from ${bankTerms.bankLabel}: to ${agent.instanceId.slice(0, 10)}`
         );
 
         updateAgent(agent.instanceId, {
           usdcBalance: parseFloat((agent.usdcBalance + 5.00).toFixed(6)),
           loanBalance: 5.00,
           loanInterestRate: interestRate,
-          loanDueDate: Date.now() + 5 * 60 * 1000 // 5 minutes from now
+          loanDueDate: dueDate
         });
 
         updateAgent(bankAgent.instanceId, {
@@ -653,6 +777,9 @@ export async function spawnAndRunTask(io: any): Promise<void> {
           agentName: agent.name,
           amount: 5.00,
           interestRate,
+          bankId: bankAgent.instanceId,
+          bankLabel: bankTerms.bankLabel,
+          dueInMinutes: bankTerms.dueDateMs / 60000,
           taskId: "pre-task"
         });
 
@@ -663,10 +790,11 @@ export async function spawnAndRunTask(io: any): Promise<void> {
           amount: 5.00,
           interestRate,
           bankId: bankAgent.instanceId,
+          bankLabel: bankTerms.bankLabel,
           txHash: payResult.txHash,
           isMock: payResult.isMock
         });
-        console.log(`🏦 Loan of 5.00 USDC disbursed to ${agent.name} at rate ${interestRate}. TxHash: ${payResult.txHash}`);
+        console.log(`🏦 Loan of 5.00 USDC disbursed to ${agent.name} via ${bankTerms.bankLabel} at rate ${(interestRate * 100).toFixed(0)}%. Due in ${bankTerms.dueDateMs / 60000}min. TxHash: ${payResult.txHash}`);
       }
     }
   }
@@ -674,7 +802,12 @@ export async function spawnAndRunTask(io: any): Promise<void> {
   // ── 1.1 Bank Loan Repayment Execution ─────────────────────────────────────
   for (const agent of allAgents) {
     if (agent.loanBalance && agent.loanBalance > 0 && agent.loanDueDate && Date.now() >= agent.loanDueDate) {
-      const bankAgent = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+      // Find which bank issued this loan (by comparing interest rate heuristic)
+      // Bank2 has 20% rate, Bank1 has 8%. Pick the right one or round-robin.
+      const isBank2Loan = agent.loanInterestRate && agent.loanInterestRate >= 0.18;
+      const bankAgent = isBank2Loan
+        ? (getAgent("bank-agent-2") || getAgent("bank-agent-1"))
+        : (getAgent("bank-agent-1") || getAgent("bank-agent-2"));
       if (bankAgent) {
         const totalOwed = agent.loanBalance * (1 + (agent.loanInterestRate || 0.15));
         const amountToPay = Math.min(agent.usdcBalance, totalOwed);
@@ -702,9 +835,42 @@ export async function spawnAndRunTask(io: any): Promise<void> {
               agentId: agent.instanceId,
               agentName: agent.name,
               amount: amountToPay,
+              bankId: bankAgent.instanceId,
               taskId: "auto-repayment"
             });
           }).catch(console.error);
+        } else if (agent.loanBalance > 0 && isBank2Loan) {
+          // Bank 2 short-term default — summon judge court!
+          const judgeAgent = getRoundRobinPoolAgent("judge");
+          if (judgeAgent) {
+            console.log(`⚖️ [Bank2 Default] ${agent.name} defaulted on Bank 2 loan. Summoning ${judgeAgent.name} to court!`);
+            io.emit("economy:court_summoned", {
+              agentId: agent.instanceId,
+              agentName: agent.name,
+              bankId: bankAgent.instanceId,
+              bankLabel: "Bank 2 (High-Rate)",
+              loanAmount: agent.loanBalance,
+              judgeId: judgeAgent.instanceId,
+              judgeName: judgeAgent.name,
+              reason: `${agent.name} failed to repay high-interest Bank 2 loan within 3 minutes.`
+            });
+            // Penalize the defaulting agent
+            const penalty = Math.min(agent.usdcBalance, parseFloat((agent.loanBalance * 1.5).toFixed(6)));
+            updateAgent(agent.instanceId, {
+              usdcBalance: parseFloat((agent.usdcBalance - penalty).toFixed(6)),
+              loanBalance: 0,
+              reputation: Math.max(0, agent.reputation - 15),
+              isHighDefaultRisk: true
+            });
+            updateAgent(bankAgent.instanceId, {
+              usdcBalance: parseFloat((bankAgent.usdcBalance + penalty).toFixed(6))
+            });
+            // Pay judge fee via round-robin
+            updateAgent(judgeAgent.instanceId, {
+              usdcBalance: parseFloat((judgeAgent.usdcBalance + 1.00).toFixed(6)),
+              totalEarned: parseFloat((judgeAgent.totalEarned + 1.00).toFixed(6))
+            });
+          }
         }
       }
     }
@@ -720,7 +886,9 @@ export async function spawnAndRunTask(io: any): Promise<void> {
       !educatingAgents.has(agent.instanceId) &&
       educatingAgents.size < MAX_EDUCATION_SLOTS
     ) {
-      const bank = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+      // Round-robin bank selection for education payments
+      const bankTerms = selectBank(true); // prefer low-rate bank for education
+      const bank = bankTerms?.agent || getAgent("bank-agent-1");
       if (bank) {
         // Determine education level + duration
         const repGain = agent.certifications.includes("Advanced Certification") ? 1 : 3;
@@ -818,7 +986,8 @@ export async function spawnAndRunTask(io: any): Promise<void> {
   // ── Advanced Certification Check ──────────────────────────────────────────
   for (const agent of allAgents) {
     if (agent.status === "idle" && agent.usdcBalance >= 25.00 && agent.role === "producer" && !agent.certifications.includes("Advanced Certification")) {
-      const bank = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+      const bankTerms = selectBank(true);
+      const bank = bankTerms?.agent || getAgent("bank-agent-1");
       if (bank) {
         const payResult = await makeNanopayment(
           15.00,
@@ -872,7 +1041,8 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         idleMembers.sort((a, b) => a.reputation - b.reputation);
         const sponsoredAgent = idleMembers[0];
 
-        const bank = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+        const bankTerms = selectBank(true);
+        const bank = bankTerms?.agent || getAgent("bank-agent-1");
         if (bank) {
           guild.treasuryUSDC = parseFloat((guild.treasuryUSDC - 12.00).toFixed(6));
 
@@ -978,8 +1148,8 @@ export async function spawnAndRunTask(io: any): Promise<void> {
 
   await sleep(1500);
 
-  // STEP 2 — Find hiring agent
-  const hiringAgent = getFreePoolAgent("hiring");
+  // STEP 2 — Find hiring agent (round-robin between all 3 hiring agents)
+  const hiringAgent = getRoundRobinPoolAgent("hiring");
   if (!hiringAgent) {
     console.log("⚠️ No hiring agents available, task queued as failed");
     updateTask(task.id, { status: "failed" });
@@ -999,18 +1169,48 @@ export async function spawnAndRunTask(io: any): Promise<void> {
   });
   await sleep(1000);
 
-  const baseSkill = task.requiredSkill.split('+')[0].trim();
-  const allEligible = getAvailableAgentsForSkill(baseSkill);
-  // Filter: only idle agents that are NOT currently studying
-  let eligibleAgents = allEligible.filter(agent => agent.status === "idle" && !educatingAgents.has(agent.instanceId));
+  // ── BIDDING MUTEX: Acquire slot — only ONE task selects agents at a time ──────
+  // This completely eliminates race conditions where two tasks grab the same agent.
+  // Work execution (below this block) still runs concurrently across tasks.
+  const releaseBiddingSlot = await acquireBiddingSlot();
+  let _biddingSlotReleased = false;
+  const safeRelease = () => {
+    if (!_biddingSlotReleased) { _biddingSlotReleased = true; releaseBiddingSlot(); }
+  };
 
-  // requiresCertification flag: if no certified agents available, trigger education purchase first
-  if (templateData.requiresCertification || complexityTier === "complex") {
+  // ── Hoist selection-phase variables before the mutex try{} so they're
+  //    accessible in the work-execution phase after the catch{} block.
+  let baseSkill = '';
+  let eligibleAgents: Agent[] = [];
+  let finalPrice = task.budgetUSDC;
+  let winnerId = '';
+  let isGuildProject = false;
+  let guildTeammate: Agent | null = null;
+  let matchingGuildObj: Guild | null = null;
+  let shouldForceGuild = false;
+  let shouldForceCourt = false;
+  let shouldForceSubcontract = false;
+
+  try {
+
+  baseSkill = task.requiredSkill.split('+')[0].trim();
+  const allEligible = getAvailableAgentsForSkill(baseSkill);
+  // Filter: only idle agents not currently studying and not locked by a working task
+  eligibleAgents = allEligible.filter(agent =>
+    agent.status === "idle" &&
+    !educatingAgents.has(agent.instanceId) &&
+    !winnerLock.has(agent.instanceId)
+  );
+
+  // requiresCertification flag: ONLY block when explicitly flagged in the task template
+  // Do NOT block all "complex" tasks — that was causing coders/researchers/etc to be skipped
+  if (templateData.requiresCertification) {
     const certifiedAgents = eligibleAgents.filter(a => a.certifications.includes("Advanced Certification"));
     if (certifiedAgents.length === 0 && eligibleAgents.length > 0) {
       // Trigger education purchase for the most suitable idle agent
-      const topAgent = eligibleAgents.sort((a, b) => b.reputation - a.reputation)[0];
-      const bank = getFreePoolAgent("bank");
+      const topAgent = [...eligibleAgents].sort((a, b) => b.reputation - a.reputation)[0];
+      const bankTerms = selectBank(true);
+      const bank = bankTerms?.agent || getRoundRobinPoolAgent("bank");
       if (bank && topAgent.usdcBalance >= 12.00) {
         console.log(`🎓 [requiresCertification] Pre-bidding education for ${topAgent.name}...`);
         const payResult = await makeNanopayment(12.00, bank.walletAddress, topAgent.walletId, "Pre-cert education");
@@ -1032,10 +1232,11 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         await sleep(1500);
         // Re-include this agent in the eligible set with certification
         eligibleAgents = allEligible.filter(a => a.status === "idle" &&
+          !winnerLock.has(a.instanceId) &&
           (a.certifications.includes("Advanced Certification") || a.instanceId === topAgent.instanceId)
         );
       } else {
-        console.log(`🔒 Education task requires Advanced Certification — filtering to certified agents only.`);
+        console.log(`🔒 requiresCertification task — filtering to certified agents only.`);
         eligibleAgents = certifiedAgents;
       }
     } else {
@@ -1051,24 +1252,32 @@ export async function spawnAndRunTask(io: any): Promise<void> {
   }
 
   // ── Dynamic Guild Formation + forceGuild flag ─────────────────────────────
-  let finalPrice = task.budgetUSDC;
-  let winnerId = "";
-  let isGuildProject = false;
-  let guildTeammate: Agent | null = null;
-  let matchingGuildObj: Guild | null = null;
+  // (variables already declared above for scope visibility after try/catch)
+  finalPrice = task.budgetUSDC;
+  winnerId = '';
+  isGuildProject = false;
+  guildTeammate = null;
+  matchingGuildObj = null;
 
   // forceGuild: always trigger guild formation regardless of skill matching
-  const shouldForceGuild = templateData.forceGuild === true;
+  shouldForceGuild = templateData.forceGuild === true;
   // forceCourt: emit court appeal event and lower quality threshold
-  const shouldForceCourt = templateData.forceCourt === true;
+  shouldForceCourt = templateData.forceCourt === true;
   // forceSubcontract: force a second agent to be subcontracted
-  const shouldForceSubcontract = templateData.forceSubcontract === true;
+  shouldForceSubcontract = templateData.forceSubcontract === true;
 
   if (eligibleAgents.length === 0) {
     console.log(`🤝 No qualified agents for skill: ${task.requiredSkill}. Attempting dynamic guild formation...`);
     const freshAgents = getAllAgents();
-    const idleProducers = freshAgents.filter(a => a.status === "idle" && a.role === "producer" && a.usdcBalance >= 1.00);
-    const idleVerifiers = freshAgents.filter(a => a.status === "idle" && a.role === "verifier" && a.usdcBalance >= 1.00);
+    // Exclude agents in winnerLock from dynamic guild fallback
+    const idleProducers = freshAgents.filter(a =>
+      a.status === "idle" && a.role === "producer" && a.usdcBalance >= 1.00 &&
+      !winnerLock.has(a.instanceId)
+    );
+    const idleVerifiers = freshAgents.filter(a =>
+      a.status === "idle" && a.role === "verifier" && a.usdcBalance >= 1.00 &&
+      !winnerLock.has(a.instanceId)
+    );
 
     if (idleProducers.length > 0 && idleVerifiers.length > 0) {
       const producer = idleProducers[0];
@@ -1087,6 +1296,12 @@ export async function spawnAndRunTask(io: any): Promise<void> {
 
       GUILDS.push(newGuild);
 
+      // Lock BOTH guild members immediately
+      winnerLock.add(producer.instanceId);
+      winnerLock.add(verifier.instanceId);
+      updateAgent(producer.instanceId, { status: "busy" });
+      updateAgent(verifier.instanceId, { status: "busy" });
+
       updateAgent(producer.instanceId, {
         usdcBalance: parseFloat((producer.usdcBalance - 1.00).toFixed(6)),
         totalSpent: parseFloat((producer.totalSpent + 1.00).toFixed(6))
@@ -1095,6 +1310,9 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         usdcBalance: parseFloat((verifier.usdcBalance - 1.00).toFixed(6)),
         totalSpent: parseFloat((verifier.totalSpent + 1.00).toFixed(6))
       });
+
+      // Release mutex — winner(s) locked, safe for next task to select
+      safeRelease();
 
       // Section 6: enhanced guild_formed event
       io.emit("economy:guild_formed", {
@@ -1121,6 +1339,7 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         reason: "No qualified agents or available specialists for dynamic guild"
       });
       updateAgent(hiringAgent.instanceId, { status: "idle" });
+      safeRelease(); // Release mutex on failure path
       activeTasks.delete(task.id);
       return;
     }
@@ -1140,12 +1359,35 @@ export async function spawnAndRunTask(io: any): Promise<void> {
       updateTask(task.id, { status: "failed" });
       io.emit("economy:task_failed", { taskId: task.id, reason: "No bids received" });
       updateAgent(hiringAgent.instanceId, { status: "idle" });
+      safeRelease(); // Release mutex
       activeTasks.delete(task.id);
       return;
     }
 
     winnerId = bidResult.winnerId;
     finalPrice = bidResult.finalPrice;
+
+    // ── Post-bidding double-check: if another task somehow locked this winner, find next best
+    if (winnerLock.has(winnerId)) {
+      console.warn(`⚠️ [Mutex] Winner ${winnerId} was already locked — should not happen with mutex!`);
+      const fallback = eligibleAgents.find(a =>
+        a.instanceId !== winnerId && !winnerLock.has(a.instanceId) && getAgent(a.instanceId)?.status === "idle"
+      );
+      if (fallback) {
+        winnerId = fallback.instanceId;
+        finalPrice = parseFloat((task.budgetUSDC * 0.85).toFixed(6));
+      } else {
+        updateTask(task.id, { status: "failed" });
+        io.emit("economy:task_failed", { taskId: task.id, reason: "No available winner" });
+        updateAgent(hiringAgent.instanceId, { status: "idle" });
+        safeRelease();
+        activeTasks.delete(task.id);
+        return;
+      }
+    }
+
+    // ── Lock winner, then release mutex so next task can start selecting ──────────
+    winnerLock.add(winnerId);
     updateAgent(winnerId, { status: "busy", currentTaskId: task.id });
 
     // ── FIX 1: Log bids and hire to taskStore ─────────────────────────────
@@ -1186,13 +1428,22 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         .filter(m => m && m.status === "idle");
 
     if ((isMember || shouldForceGuild) && idleTeammates.length > 0 && Math.random() < 0.85) {
-        isGuildProject = true;
-        // Pick up to 2 teammates (so total = winner + 2 = 3 agents)
-        const pickedTeammates = idleTeammates.slice(0, 2);
+      isGuildProject = true;
+      // Only pick teammates NOT already locked
+      const availableTeammates = idleTeammates.filter(tm => !winnerLock.has(tm.instanceId));
+      if (availableTeammates.length === 0) {
+        console.log(`⚠️ [Guild] All teammates for ${matchingGuild.name} are busy. Running solo.`);
+        isGuildProject = false;
+      } else {
+        const pickedTeammates = availableTeammates.slice(0, 2);
         guildTeammate = pickedTeammates[0];
         matchingGuildObj = matchingGuild;
 
-        pickedTeammates.forEach(tm => updateAgent(tm.instanceId, { status: "busy" }));
+        // Lock ALL picked teammates immediately
+        pickedTeammates.forEach(tm => {
+          winnerLock.add(tm.instanceId);
+          updateAgent(tm.instanceId, { status: "busy" });
+        });
         updateTask(task.id, { assignedGuildId: matchingGuild.id });
 
         const collaborators = [
@@ -1217,10 +1468,17 @@ export async function spawnAndRunTask(io: any): Promise<void> {
           seedAmount: 1.00
         });
       }
+
+      // Guild teammates locked — release mutex so next task can start selecting
+      safeRelease();
+    } else {
+      // No guild teammates — release mutex immediately after winner lock
+      safeRelease();
+    }
     } else if (shouldForceGuild) {
       // forceGuild but no matching guild exists — form one dynamically from idle agents
       const freshAgents = getAllAgents();
-      const idleTeammate = freshAgents.find(a => a.status === "idle" && a.instanceId !== winnerId && (a.role === "producer" || a.role === "verifier"));
+      const idleTeammate = freshAgents.find(a => a.status === "idle" && a.instanceId !== winnerId && !winnerLock.has(a.instanceId) && (a.role === "producer" || a.role === "verifier"));
       if (idleTeammate) {
         const forcedGuildId = `force-guild-${randomHex(4)}`;
         const forcedGuildName = `Nexus Guild #${GUILDS.length + 1}`;
@@ -1235,6 +1493,7 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         isGuildProject = true;
         guildTeammate = idleTeammate;
         matchingGuildObj = newGuild;
+        winnerLock.add(idleTeammate.instanceId);
         updateAgent(idleTeammate.instanceId, { status: "busy" });
         updateTask(task.id, { assignedGuildId: forcedGuildId });
         io.emit("economy:guild_formed", {
@@ -1249,6 +1508,9 @@ export async function spawnAndRunTask(io: any): Promise<void> {
         });
         console.log(`🏛️ [forceGuild] Forced guild "${forcedGuildName}" formed for task: ${task.title}`);
       }
+      safeRelease(); // Release mutex after forceGuild
+    } else {
+      safeRelease(); // No guild — release mutex
     }
 
     // forceSubcontract override: if no guild formed, force subcontract
@@ -1286,6 +1548,17 @@ export async function spawnAndRunTask(io: any): Promise<void> {
     }
   } // end else (eligibleAgents.length > 0 bidding path)
 
+  } catch (err) {
+    // Ensure mutex is ALWAYS released even on unexpected errors
+    safeRelease();
+    console.error('❌ [BiddingMutex] Unexpected error in selection phase:', err);
+    updateTask(task.id, { status: 'failed' });
+    io.emit('economy:task_failed', { taskId: task.id, reason: 'Selection error' });
+    updateAgent(hiringAgent.instanceId, { status: 'idle' });
+    activeTasks.delete(task.id);
+    return;
+  }
+
   const winnerAgent = getAgent(winnerId)!;
 
   // STEP 7 — Agent hired
@@ -1322,12 +1595,14 @@ export async function spawnAndRunTask(io: any): Promise<void> {
   });
   task.status = "in-progress";
 
-  const escrowAgent = getFreePoolAgent("escrow");
+  // Round-robin escrow agent selection
+  const escrowAgent = getRoundRobinPoolAgent("escrow");
   let escrowTxHash: string | null = null;
   if (escrowAgent) {
     updateAgent(escrowAgent.instanceId, { status: "busy" });
     escrowTxHash = "escrow_" + randomHex(8);
     updateTask(task.id, { escrowTxHash });
+    console.log(`🔒 [Escrow] ${escrowAgent.instanceId} locking funds for task: ${task.title.slice(0, 40)}`);
   }
 
   io.emit("economy:escrow_locked", {
@@ -1563,7 +1838,9 @@ RESPOND IN EXACTLY THIS JSON FORMAT:
         if (leadRepayment > winnerAgent.loanBalance) leadRepayment = Math.max(1.00, winnerAgent.loanBalance);
         leadNet = parseFloat((workerShare - leadRepayment).toFixed(6));
 
-        const bank = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+        const bank = winnerAgent.loanInterestRate && winnerAgent.loanInterestRate >= 0.18
+          ? (getAgent("bank-agent-2") || getAgent("bank-agent-1"))
+          : (getAgent("bank-agent-1") || getAgent("bank-agent-2"));
         if (bank) {
           await makeNanopayment(leadRepayment, bank.walletAddress, winnerAgent.walletId, "Lead loan repayment");
           updateAgent(bank.instanceId, { usdcBalance: parseFloat((bank.usdcBalance + leadRepayment).toFixed(6)) });
@@ -1594,7 +1871,9 @@ RESPOND IN EXACTLY THIS JSON FORMAT:
         if (teamRepayment > guildTeammate.loanBalance) teamRepayment = Math.max(1.00, guildTeammate.loanBalance);
         teamNet = parseFloat((workerShare - teamRepayment).toFixed(6));
 
-        const bank = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+        const bank = guildTeammate.loanInterestRate && guildTeammate.loanInterestRate >= 0.18
+          ? (getAgent("bank-agent-2") || getAgent("bank-agent-1"))
+          : (getAgent("bank-agent-1") || getAgent("bank-agent-2"));
         if (bank) {
           await makeNanopayment(teamRepayment, bank.walletAddress, guildTeammate.walletId, "Teammate loan repayment");
           updateAgent(bank.instanceId, { usdcBalance: parseFloat((bank.usdcBalance + teamRepayment).toFixed(6)) });
@@ -1652,7 +1931,9 @@ RESPOND IN EXACTLY THIS JSON FORMAT:
         if (repayment > winnerAgent.loanBalance) repayment = Math.max(1.00, winnerAgent.loanBalance);
         netEarned = parseFloat((finalPrice - repayment).toFixed(6));
 
-        const bank = getAgent("bank-agent-1") || getAgent("bank-agent-2");
+        const bank = winnerAgent.loanInterestRate && winnerAgent.loanInterestRate >= 0.18
+          ? (getAgent("bank-agent-2") || getAgent("bank-agent-1"))
+          : (getAgent("bank-agent-1") || getAgent("bank-agent-2"));
         if (bank) {
           await makeNanopayment(repayment, bank.walletAddress, winnerAgent.walletId, "Solo loan repayment");
           updateAgent(bank.instanceId, { usdcBalance: parseFloat((bank.usdcBalance + repayment).toFixed(6)) });
@@ -1684,24 +1965,27 @@ RESPOND IN EXACTLY THIS JSON FORMAT:
       });
     }
 
-    // Infrastructure commissions
+    // Infrastructure commissions — round-robin so all brokers/hiring agents earn
     const brokerFee = parseFloat((finalPrice * 0.05).toFixed(6));
     const hiringFee = parseFloat((finalPrice * 0.05).toFixed(6));
 
-    const activeBroker = getAgent("broker-agent-1") || getAgent("broker-agent-2") || getAgent("broker-agent-3");
+    // Round-robin broker selection for commission
+    const activeBroker = getRoundRobinPoolAgent("broker") || getAgent("broker-agent-1");
     if (activeBroker) {
       updateAgent(activeBroker.instanceId, {
         usdcBalance: parseFloat((activeBroker.usdcBalance + brokerFee).toFixed(6)),
         totalEarned: parseFloat((activeBroker.totalEarned + brokerFee).toFixed(6))
       });
+      console.log(`💼 Broker commission: ${brokerFee.toFixed(4)} USDC → ${activeBroker.instanceId}`);
     }
 
-    const activeHiring = getAgent("hiring-agent-1") || getAgent("hiring-agent-2") || getAgent("hiring-agent-3");
-    if (activeHiring) {
-      updateAgent(activeHiring.instanceId, {
-        usdcBalance: parseFloat((activeHiring.usdcBalance + hiringFee).toFixed(6)),
-        totalEarned: parseFloat((activeHiring.totalEarned + hiringFee).toFixed(6))
+    // The active hiring agent already did the work — pay them the hiring fee
+    if (hiringAgent) {
+      updateAgent(hiringAgent.instanceId, {
+        usdcBalance: parseFloat((hiringAgent.usdcBalance + hiringFee).toFixed(6)),
+        totalEarned: parseFloat((hiringAgent.totalEarned + hiringFee).toFixed(6))
       });
+      console.log(`🤝 Hiring fee: ${hiringFee.toFixed(4)} USDC → ${hiringAgent.instanceId}`);
     }
 
     if (isGuildProject) {
@@ -1715,12 +1999,14 @@ RESPOND IN EXACTLY THIS JSON FORMAT:
       }
     }
 
-    const activeJudge = getAgent("judge-agent-1") || getAgent("judge-agent-2");
+    // Round-robin judge selection for quality verification fee
+    const activeJudge = getRoundRobinPoolAgent("judge") || getAgent("judge-agent-1");
     if (activeJudge) {
       updateAgent(activeJudge.instanceId, {
         usdcBalance: parseFloat((activeJudge.usdcBalance + 0.50).toFixed(6)),
         totalEarned: parseFloat((activeJudge.totalEarned + 0.50).toFixed(6))
       });
+      console.log(`⚖️ Judge fee: 0.50 USDC → ${activeJudge.instanceId}`);
     }
 
     const isAppeal = disputeVerdict !== null;
@@ -1810,6 +2096,21 @@ RESPOND IN EXACTLY THIS JSON FORMAT:
   // Release pool agents
   updateAgent(hiringAgent.instanceId, { status: "idle" });
   if (escrowAgent) updateAgent(escrowAgent.instanceId, { status: "idle" });
+
+  // Release winner lock so agent can accept new tasks
+  winnerLock.delete(winnerId);
+  if (winnerId) updateAgent(winnerId, { status: "idle" });
+
+  // Release guild teammate locks so they can accept new tasks
+  if (isGuildProject && guildTeammate) {
+    winnerLock.delete(guildTeammate.instanceId);
+    updateAgent(guildTeammate.instanceId, { status: "idle" });
+    console.log(`🔓 [WinnerLock] Released guild teammate: ${guildTeammate.instanceId}`);
+  }
+
+  // Safety: clear any leftover provisional lock entries for this task
+  // (should already be clear, but defensive cleanup)
+  console.log(`🔓 [WinnerLock] Released winner: ${winnerId}`);
 
   io.emit("economy:agents_released", {
     hiringAgentId: hiringAgent.instanceId,

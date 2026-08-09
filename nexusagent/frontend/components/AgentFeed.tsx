@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * AgentFeed.tsx — Phase 5 update (light theme + new event types)
+ * AgentFeed.tsx — Phase 8 update (real-time economy loop events)
  * ──────────────────────────────────────────────────────────────────────────────
  * Live scrolling activity feed for all Socket.io agent events.
- * Phase 5 new event types: budget_allocated, wallet_refilled, fact_checked,
- * stats_pulled, reputation_updated, compliance_checked.
+ * Now listens to BOTH agentActivity (old bounty pipeline) AND economy:* events
+ * so the feed updates in real-time when the economy loop is running.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
@@ -57,6 +57,27 @@ const EVENT_STYLES: Record<string, EventStyle> = {
   reputation_updated:  { icon: '⭐', label: 'Reputation',        bg: 'bg-yellow-50',    border: 'border-yellow-200',  text: 'text-yellow-700'  },
   leaderboard_updated: { icon: '🏅', label: 'Leaderboard',       bg: 'bg-yellow-50',    border: 'border-yellow-200',  text: 'text-yellow-700'  },
 
+  // ── Economy Loop events (Phase 8: real-time economy feed) ─────────────────
+  'economy:task_spawned':      { icon: '📋', label: 'Task Spawned',        bg: 'bg-indigo-50',   border: 'border-indigo-200',  text: 'text-indigo-700'  },
+  'economy:agent_hired':       { icon: '🤝', label: 'Agent Hired',         bg: 'bg-blue-50',     border: 'border-blue-200',    text: 'text-blue-700'    },
+  'economy:bidding_started':   { icon: '🔔', label: 'Bidding Started',     bg: 'bg-violet-50',   border: 'border-violet-200',  text: 'text-violet-700'  },
+  'economy:bid_placed':        { icon: '💬', label: 'Bid Placed',          bg: 'bg-slate-50',    border: 'border-slate-200',   text: 'text-slate-600'   },
+  'economy:work_started':      { icon: '⚙️', label: 'Work Started',        bg: 'bg-blue-50',     border: 'border-blue-200',    text: 'text-blue-700'    },
+  'economy:work_completed':    { icon: '✨', label: 'Work Completed',      bg: 'bg-sky-50',      border: 'border-sky-200',     text: 'text-sky-700'     },
+  'economy:task_complete':     { icon: '✅', label: 'Task Complete',       bg: 'bg-emerald-50',  border: 'border-emerald-200', text: 'text-emerald-700' },
+  'economy:task_failed':       { icon: '❌', label: 'Task Failed',         bg: 'bg-red-50',      border: 'border-red-200',     text: 'text-red-700'     },
+  'economy:loan_issued':       { icon: '🏦', label: 'Loan Issued',         bg: 'bg-orange-50',   border: 'border-orange-200',  text: 'text-orange-700'  },
+  'economy:loan_repaid':       { icon: '💚', label: 'Loan Repaid',         bg: 'bg-emerald-50',  border: 'border-emerald-200', text: 'text-emerald-700' },
+  'economy:guild_formed':      { icon: '🏛️', label: 'Guild Formed',        bg: 'bg-violet-50',   border: 'border-violet-200',  text: 'text-violet-700'  },
+  'economy:guild_collaboration':{ icon: '🤜', label: 'Guild Collab',       bg: 'bg-violet-50',   border: 'border-violet-200',  text: 'text-violet-700'  },
+  'economy:court_appeal':      { icon: '⚖️', label: 'Court Appeal',        bg: 'bg-red-50',      border: 'border-red-200',     text: 'text-red-700'     },
+  'economy:court_summoned':    { icon: '⚖️', label: 'Court Summoned',      bg: 'bg-red-50',      border: 'border-red-200',     text: 'text-red-700'     },
+  'economy:escrow_locked':     { icon: '🔒', label: 'Escrow Locked',       bg: 'bg-slate-50',    border: 'border-slate-200',   text: 'text-slate-600'   },
+  'economy:subcontract_hired': { icon: '🔗', label: 'Subcontracted',       bg: 'bg-sky-50',      border: 'border-sky-200',     text: 'text-sky-700'     },
+  'economy:education_purchased':{ icon: '🎓', label: 'Education',          bg: 'bg-amber-50',    border: 'border-amber-200',   text: 'text-amber-700'   },
+  'economy:education_started': { icon: '📖', label: 'Studying',            bg: 'bg-amber-50',    border: 'border-amber-200',   text: 'text-amber-700'   },
+  'economy:education_complete':{ icon: '🎓', label: 'Skill Learned',       bg: 'bg-amber-50',    border: 'border-amber-300',   text: 'text-amber-800'   },
+
   // ── Misc ───────────────────────────────────────────────────────────────────
   draft_ready:         { icon: '📝', label: 'Draft Ready',       bg: 'bg-slate-50',     border: 'border-slate-200',   text: 'text-slate-600'   },
   error:               { icon: '❌', label: 'Error',             bg: 'bg-red-50',       border: 'border-red-200',     text: 'text-red-700'     },
@@ -82,6 +103,7 @@ interface FeedEntry {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildMessage(event: string, data: Record<string, any>): string {
   switch (event) {
+    // ── Old bounty pipeline events ──────────────────────────────────────────
     case 'bounty:created':       return `New bounty: "${data.title ?? 'Untitled'}" — $${data.reward ?? '?'} USDC`;
     case 'bounty_processing':
       if (data.agentId) return `Agent ${String(data.agentId).toUpperCase()} starting ${data.stage ?? 'research'}: "${data.topic ?? data.title ?? ''}"`;
@@ -100,7 +122,6 @@ function buildMessage(event: string, data: Record<string, any>): string {
     case 'bounty_won':           return `🏆 Winner: Agent ${String(data.winner ?? '').toUpperCase()}! Reward: $${data.reward ?? data.amount ?? '?'} USDC`;
     case 'bounty_completed':     return `Bounty complete! Winner: ${String(data.winner ?? '').toUpperCase()} | USDC moved: $${Number(data.totalUsdcMoved ?? 0).toFixed(4)}`;
     case 'reward_released':      return `Reward released: $${data.amount ?? '?'} USDC → ${String(data.winner ?? '')} tx: ${String(data.txHash ?? '').slice(0, 14)}…`;
-    // Phase 5 new events
     case 'budget_allocated':     return `Budget allocated: Research 25% | Writer 30% | DataAnalyst 20% | FactCheck 15% | Reserve 10%`;
     case 'wallet_refilled':      return data.refilled?.length > 0
       ? `Wallets refilled: ${(data.refilled as string[]).join(', ')} via ${data.methodUsed ?? 'fallback'}`
@@ -110,7 +131,48 @@ function buildMessage(event: string, data: Record<string, any>): string {
     case 'reputation_updated':   return `Reputation updated: Pipeline ${String(data.winner ?? data.pipelineId ?? '').toUpperCase()} — Score A: ${data.scoreA ?? '?'} | B: ${data.scoreB ?? '?'}`;
     case 'leaderboard_updated':  return `Leaderboard updated — ${Array.isArray(data.leaderboard) ? data.leaderboard.length : 0} pipelines ranked`;
     case 'error':                return `Error: ${data.message ?? 'Unknown error'}`;
-    default:                     return JSON.stringify(data).slice(0, 120);
+
+    // ── Economy loop events (real-time) ────────────────────────────────────
+    case 'economy:task_spawned':
+      return `📋 Task: "${String(data.task?.title ?? '').slice(0, 50)}" — $${data.task?.budgetUSDC ?? '?'} USDC [${data.tier ?? 'medium'}]`;
+    case 'economy:agent_hired':
+      return `🤝 ${data.agentName ?? 'Agent'} hired for $${data.finalPrice ?? '?'} USDC on task`;
+    case 'economy:bidding_started':
+      return `🔔 Bidding open — ${data.eligibleAgentCount ?? '?'} agents eligible`;
+    case 'economy:bid_placed':
+      return `💬 ${data.agentName ?? 'Agent'} placed bid of $${data.bid?.bidAmountUSDC?.toFixed(2) ?? '?'} USDC`;
+    case 'economy:work_started':
+      return `⚙️ ${data.agentName ?? 'Agent'} started working on task`;
+    case 'economy:work_completed':
+      return `✨ Work completed — result ready for verification`;
+    case 'economy:task_complete':
+      return `✅ ${data.agentName ?? 'Agent'} earned $${data.earned ?? '?'} USDC (Quality: ${data.qualityScore ?? '?'}/100)`;
+    case 'economy:task_failed':
+      return `❌ Task failed: ${data.reason ?? 'Quality below threshold'}`;
+    case 'economy:loan_issued':
+      return `🏦 ${data.agentName ?? 'Agent'} got $${data.amount ?? '?'} USDC loan from ${data.bankLabel ?? data.bankId ?? 'Bank'} at ${((data.interestRate ?? 0) * 100).toFixed(0)}% interest`;
+    case 'economy:loan_repaid':
+      return `💚 ${data.agentName ?? 'Agent'} repaid $${data.amount ?? '?'} USDC to ${data.bankId ?? 'Bank'}`;
+    case 'economy:guild_formed':
+      return `🏛️ Guild "${data.guildName ?? 'Unknown'}" formed — ${data.members?.length ?? 2} agents collaborating`;
+    case 'economy:guild_collaboration':
+      return `🤜 Guild collaboration on "${String(data.guildName ?? '').slice(0, 30)}" — lead: ${data.leadAgentId ?? '?'}`;
+    case 'economy:court_appeal':
+      return `⚖️ Court appeal ${data.round === 'ruling' ? `— RULED: ${data.result?.toUpperCase() ?? '?'}` : 'filed'} for "${String(data.taskTitle ?? '').slice(0, 30)}"`;
+    case 'economy:court_summoned':
+      return `⚖️ ${data.agentName ?? 'Agent'} summoned to court by ${data.bankLabel ?? 'Bank'} — Judge: ${data.judgeName ?? '?'}`;
+    case 'economy:escrow_locked':
+      return `🔒 Escrow locked: $${data.amount ?? '?'} USDC held by ${data.escrowAgentId ?? 'escrow'}`;
+    case 'economy:subcontract_hired':
+      return `🔗 ${data.primaryAgentName ?? '?'} subcontracted ${data.subAgentName ?? '?'} for $${data.fee?.toFixed(2) ?? '?'} USDC`;
+    case 'economy:education_purchased':
+      return `🎓 ${data.agentName ?? 'Agent'} learned "${data.skill ?? '?'}" for $${data.cost ?? '?'} USDC`;
+    case 'economy:education_started':
+      return `📖 ${data.agentName ?? 'Agent'} started studying "${data.skill?.replace(/-/g, ' ') ?? '?'}" (+${data.repGain ?? '?'} rep)`;
+    case 'economy:education_complete':
+      return `🎓 ${data.agentName ?? 'Agent'} mastered "${data.skill?.replace(/-/g, ' ') ?? '?'}"! Rep now ${data.newReputation ?? '?'}`;
+
+    default: return JSON.stringify(data).slice(0, 120);
   }
 }
 
@@ -124,21 +186,63 @@ export default function AgentFeed() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [entries]);
 
-  const handleActivity = useCallback((payload: AgentActivityPayload) => {
+  // Generic handler that adds any event to the feed
+  const addEntry = useCallback((event: string, data: Record<string, any>) => {
     const entry: FeedEntry = {
       id:        `${Date.now()}-${Math.random()}`,
-      event:     payload.event,
-      data:      payload.data,
-      timestamp: payload.timestamp,
+      event,
+      data,
+      timestamp: new Date().toISOString(),
     };
     setEntries((prev) => [...prev.slice(-299), entry]);
   }, []);
 
+  const handleActivity = useCallback((payload: AgentActivityPayload) => {
+    addEntry(payload.event, payload.data);
+  }, [addEntry]);
+
   useEffect(() => {
     if (!socket) return;
+
+    // Old bounty pipeline events
     socket.on('agentActivity', handleActivity);
-    return () => { socket.off('agentActivity', handleActivity); };
-  }, [handleActivity]);
+
+    // Economy loop events — subscribe to all for real-time feed
+    const ECONOMY_EVENTS = [
+      'economy:task_spawned',
+      'economy:agent_hired',
+      'economy:bidding_started',
+      'economy:bid_placed',
+      'economy:work_started',
+      'economy:work_completed',
+      'economy:task_complete',
+      'economy:task_failed',
+      'economy:loan_issued',
+      'economy:loan_repaid',
+      'economy:guild_formed',
+      'economy:guild_collaboration',
+      'economy:court_appeal',
+      'economy:court_summoned',
+      'economy:escrow_locked',
+      'economy:subcontract_hired',
+      'economy:education_purchased',
+      'economy:education_started',
+      'economy:education_complete',
+    ] as const;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handlers: Array<{ event: string; fn: (data: any) => void }> = ECONOMY_EVENTS.map(ev => ({
+      event: ev,
+      fn: (data: any) => addEntry(ev, data ?? {}),
+    }));
+
+    handlers.forEach(({ event, fn }) => socket.on(event, fn));
+
+    return () => {
+      socket.off('agentActivity', handleActivity);
+      handlers.forEach(({ event, fn }) => socket.off(event, fn));
+    };
+  }, [handleActivity, addEntry]);
 
   function formatTime(iso: string): string {
     try {
@@ -167,7 +271,7 @@ export default function AgentFeed() {
           <div className="flex flex-col items-center justify-center py-16 text-slate-400">
             <span className="text-4xl mb-3">📡</span>
             <p className="text-sm font-medium">Waiting for agent activity…</p>
-            <p className="text-xs mt-1 text-slate-300">Post a bounty or run the demo to start</p>
+            <p className="text-xs mt-1 text-slate-300">Post a bounty or start the economy engine</p>
           </div>
         )}
 

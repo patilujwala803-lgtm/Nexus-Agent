@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { FlowState, EconomyStats, TravelingCircle, ToastItem, Task, Bid, Agent } from '../types';
 import type { EducatingAgent } from '../components/EducationCard';
@@ -7,6 +7,20 @@ const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000'
 
 // Bug Fix 4: cap completed flows
 const MAX_COMPLETED_FLOWS = 20;
+
+// Canvas coordinate constants (must match FlowDiagram.tsx)
+const CANVAS_START_X = 80;
+const FLOW_ROW_HEIGHT = 320; // vertical spacing between flow rows
+const FLOW_TOP_OFFSET = 100; // top offset for first flow
+
+// Compute the absolute Y center for a given flow by its index in activeFlowIds
+function getFlowCenterY(activeFlowIds: string[], taskId: string, numBids: number): number {
+  const idx = activeFlowIds.indexOf(taskId);
+  const rowIndex = idx >= 0 ? idx : 0;
+  const rowHeight = numBids >= 3 ? 260 : 210;
+  const flowY = FLOW_TOP_OFFSET + rowIndex * FLOW_ROW_HEIGHT;
+  return flowY + rowHeight / 2;
+}
 
 export interface EconomyAnnouncement {
   id: string;
@@ -40,6 +54,15 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
   const [announcements, setAnnouncements] = useState<EconomyAnnouncement[]>([]);
   const [educatingAgents, setEducatingAgents] = useState<EducatingAgent[]>([]);
   const [apiQuotaError, setApiQuotaError] = useState<boolean>(false);
+
+  // Ref to always have current activeFlowIds for Y-coord calculations in callbacks
+  const activeFlowIdsRef = useRef<string[]>([]);
+
+  // Keep ref in sync with state so socket callbacks always see latest value
+  useEffect(() => {
+    activeFlowIdsRef.current = activeFlowIds;
+  }, [activeFlowIds]);
+
 
   const addToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'info') => {
     const id = `toast-${Date.now()}-${Math.random()}`;
@@ -168,15 +191,12 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
         }
         return nextMap;
       });
+      // Use activeFlowIdsRef for correct Y coordinate
       setFlows((currMap) => {
-        const flowList = Array.from(currMap.keys());
-        const flowIndex = flowList.indexOf(taskId);
         const numBids = currMap.get(taskId)?.bids?.length || 0;
-        const rowHeight = numBids >= 3 ? 260 : 210;
-        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 320;
-        const centerY = flowY + rowHeight / 2;
-        // Ball travels from bid spoke cards (bidNodeX-120=200) to bidNode (320)
-        spawnCircle('#fbbf24', 200, centerY, 320, centerY, 1000);
+        const centerY = getFlowCenterY(activeFlowIdsRef.current, taskId, numBids);
+        // Ball: agent bid cards (bidNodeX-120 = 200) -> bidNode (320)
+        spawnCircle('#fbbf24', CANVAS_START_X + 120, centerY, CANVAS_START_X + 240, centerY, 1000);
         return currMap;
       });
     });
@@ -240,15 +260,12 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
 
     socket.on('economy:work_completed', (data: { taskId: string; agentId: string; result: string }) => {
       updateFlowInState(data.taskId, (prev) => ({ ...prev, phase: 'verifying', result: data.result }));
+      // Use activeFlowIdsRef for correct Y coordinate
       setFlows((currMap) => {
-        const flowList = Array.from(currMap.keys());
-        const flowIndex = flowList.indexOf(data.taskId);
         const numBids = currMap.get(data.taskId)?.bids?.length || 0;
-        const rowHeight = numBids >= 3 ? 260 : 210;
-        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 320;
-        const centerY = flowY + rowHeight / 2;
-        // Ball travels from workerCard (500) to paymentNode (720)
-        spawnCircle('#6366f1', 500, centerY, 720, centerY, 1200);
+        const centerY = getFlowCenterY(activeFlowIdsRef.current, data.taskId, numBids);
+        // Ball: workerCard (CANVAS_START_X+420=500) -> paymentNode (CANVAS_START_X+640=720)
+        spawnCircle('#6366f1', CANVAS_START_X + 420, centerY, CANVAS_START_X + 640, centerY, 1200);
         return currMap;
       });
     });
@@ -293,15 +310,12 @@ export function useEconomySocket(onSessionUpdate?: (flow: FlowState) => void) {
         }
         return nextMap;
       });
+      // Use activeFlowIdsRef for correct Y coordinate — green payment ball
       setFlows((currMap) => {
-        const flowList = Array.from(currMap.keys());
-        const flowIndex = flowList.indexOf(taskId);
         const numBids = currMap.get(taskId)?.bids?.length || 0;
-        const rowHeight = numBids >= 3 ? 260 : 210;
-        const flowY = 100 + (flowIndex >= 0 ? flowIndex : 0) * 320;
-        const centerY = flowY + rowHeight / 2;
-        // Payment ball travels from paymentNode (720) back to workerCard (500) as success pulse
-        spawnCircle('#22c55e', 720, centerY, 500, centerY, 1400);
+        const centerY = getFlowCenterY(activeFlowIdsRef.current, taskId, numBids);
+        // Payment ball: paymentNode (CANVAS_START_X+640=720) -> workerCard (CANVAS_START_X+420=500)
+        spawnCircle('#22c55e', CANVAS_START_X + 640, centerY, CANVAS_START_X + 420, centerY, 1400);
         return currMap;
       });
       addToast(`✅ ${agentName} earned $${earned} USDC (Score: ${qualityScore}/100)`, 'success');

@@ -170,23 +170,35 @@ export function BankSidebar({ isOpen, onClose, totalLoansDisbursed = 0 }: BankSi
         </div>
       )}
 
-      {/* Recent Activity placeholder */}
+      {/* Interest Info — Two-Bank Model */}
       <div className="flex items-center gap-2 mb-2">
         <div className="flex-1 h-px" style={{ background: 'rgba(99,102,241,0.1)' }} />
-        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(30,27,75,0.35)' }}>Interest Info</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(30,27,75,0.35)' }}>Bank Terms</span>
         <div className="flex-1 h-px" style={{ background: 'rgba(99,102,241,0.1)' }} />
       </div>
-      <div className="rounded-xl p-3 space-y-1.5" style={{ background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.08)' }}>
-        {[
-          { rep: '≥ 90', rate: '5%', color: '#10b981', label: '🟢 Prime Rate' },
-          { rep: '50–89', rate: '15%', color: '#6366f1', label: '🔵 Standard' },
-          { rep: '< 50', rate: '25%', color: '#ef4444', label: '🔴 High Risk' },
-        ].map(r => (
-          <div key={r.rep} className="flex items-center justify-between text-[10px]">
-            <span style={{ color: r.color }}>{r.label}</span>
-            <span className="font-bold" style={{ color: '#1e1b4b' }}>Rep {r.rep} → {r.rate} APR</span>
+      <div className="space-y-2">
+        <div className="rounded-xl p-3" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-extrabold" style={{ color: '#10b981' }}>🏦 Bank Agent #1</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>Low-Rate</span>
           </div>
-        ))}
+          <div className="flex justify-between text-[10px]" style={{ color: 'rgba(30,27,75,0.5)' }}>
+            <span>8% interest rate</span>
+            <span>10 min repayment</span>
+          </div>
+          <p className="text-[9px] mt-1" style={{ color: 'rgba(30,27,75,0.4)' }}>Affordable long-term financing for stable producers</p>
+        </div>
+        <div className="rounded-xl p-3" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[11px] font-extrabold" style={{ color: '#f59e0b' }}>🏦 Bank Agent #2</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>High-Rate</span>
+          </div>
+          <div className="flex justify-between text-[10px]" style={{ color: 'rgba(30,27,75,0.5)' }}>
+            <span>20% interest rate</span>
+            <span>3 min repayment</span>
+          </div>
+          <p className="text-[9px] mt-1" style={{ color: 'rgba(30,27,75,0.4)' }}>Short-term emergency loans. Default = court summons ⚖️</p>
+        </div>
       </div>
     </SidebarWrapper>
   );

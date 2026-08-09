@@ -37,7 +37,9 @@ export function generateBid(agent: Agent, task: Task): Bid {
       multiplier = 0.88;
       break;
     case "premium":
-      multiplier = 0.98;
+      // For small tasks ($8 or less), premium agents cap at 0.90 so they
+      // still compete instead of pricing themselves out
+      multiplier = task.budgetUSDC <= 8 ? 0.90 : 0.98;
       break;
   }
 
@@ -46,7 +48,11 @@ export function generateBid(agent: Agent, task: Task): Bid {
     console.log(`📈 [generateBid] Surge Pricing (1.5x) triggered for ${agent.name} on consecutive skill: ${task.requiredSkill}`);
   }
 
-  if (agent.consecutiveIdleCycles >= 3) {
+  if (agent.consecutiveIdleCycles >= 5) {
+    // Very idle agents drop bids aggressively to finally get work
+    multiplier = multiplier * 0.65;
+    console.log(`📉 [generateBid] Desperation discount (35%) for ${agent.name} (${agent.consecutiveIdleCycles} idle cycles)`);
+  } else if (agent.consecutiveIdleCycles >= 3) {
     multiplier = multiplier * 0.75;
     console.log(`📉 [generateBid] Dynamic Pricing underemployment discount (25%) for ${agent.name}`);
   } else if (agent.consecutiveIdleCycles > 2) {
