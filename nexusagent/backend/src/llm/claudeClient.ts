@@ -4,8 +4,8 @@
  * Shared LLM helper — calls Nemotron-3-Ultra via OpenRouter.
  *
  * API Key Rotation:
- *   Tries OPENROUTER_API_KEY → OPENROUTER_API_KEY_2 → OPENROUTER_API_KEY_3
- *   on 429 (quota exceeded) or other failures. This lets you run 3 keys
+ *   Tries OPENROUTER_API_KEY → OPENROUTER_API_KEY_2 → OPENROUTER_API_KEY_3 → OPENROUTER_API_KEY_4
+ *   on 429 (quota exceeded) or other failures. This lets you run 4 keys
  *   and automatically switch when one exhausts its daily quota.
  *
  * Judge API:
@@ -32,9 +32,11 @@ function getRotationKeys(): string[] {
   const k1 = process.env.OPENROUTER_API_KEY;
   const k2 = process.env.OPENROUTER_API_KEY_2;
   const k3 = process.env.OPENROUTER_API_KEY_3;
+  const k4 = process.env.OPENROUTER_API_KEY_4;
   if (k1) keys.push(k1);
   if (k2) keys.push(k2);
   if (k3) keys.push(k3);
+  if (k4) keys.push(k4);
   return keys;
 }
 

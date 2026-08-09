@@ -145,10 +145,6 @@ Provide a comprehensive, highly-detailed response. Do not include introductory c
 
   emit('bounty_completed', finalData);
   emit('agentActivity', {
-    event: 'bounty_completed',       // PaymentLog listens on agentActivity with this event
-    data: finalData
-  });
-  emit('agentActivity', {
     event: 'economy:task_complete',
     data: finalData
   });

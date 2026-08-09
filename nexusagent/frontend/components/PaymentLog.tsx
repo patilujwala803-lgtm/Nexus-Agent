@@ -20,7 +20,7 @@ interface PaymentRow {
   to:        string;
   amount:    number;
   txHash:    string;
-  status:    'confirmed' | 'mock' | 'pending';
+  status:    'confirmed' | 'simulated' | 'pending';
   timestamp: string;
 }
 
@@ -33,9 +33,9 @@ function truncateTx(tx: string): string {
   return `${tx.slice(0, 8)}…${tx.slice(-6)}`;
 }
 
-function detectStatus(txHash: string): 'confirmed' | 'mock' | 'pending' {
+function detectStatus(txHash: string): 'confirmed' | 'simulated' | 'pending' {
   if (!txHash) return 'pending';
-  if (txHash.startsWith('0xmock') || txHash.startsWith('0xfail') || txHash.startsWith('0xnotok')) return 'mock';
+  if (txHash.startsWith('0xmock') || txHash.startsWith('0xfail') || txHash.startsWith('0xnotok')) return 'simulated';
   return 'confirmed';
 }
 
@@ -152,9 +152,9 @@ export default function PaymentLog() {
                         ✓ Live
                       </span>
                     )}
-                    {p.status === 'mock' && (
-                      <span className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
-                        ~ Mock
+                    {p.status === 'simulated' && (
+                      <span className="inline-flex items-center gap-0.5 bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
+                        ⚡ Demo
                       </span>
                     )}
                     {p.status === 'pending' && (
