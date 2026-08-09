@@ -243,8 +243,29 @@ export async function createNexusWallets(): Promise<WalletsFile> {
 }
 
 export async function loadWallets(): Promise<WalletsFile> {
-  const raw = await fs.readFile(WALLETS_FILE, 'utf-8');
-  return JSON.parse(raw) as WalletsFile;
+  // 1. Check env var first (used in Railway/production where wallets.json isn't on disk)
+  if (process.env.WALLETS_JSON) {
+    try {
+      return JSON.parse(process.env.WALLETS_JSON) as WalletsFile;
+    } catch {
+      console.warn('⚠️ [walletService] WALLETS_JSON env var is set but not valid JSON — falling back to file.');
+    }
+  }
+
+  // 2. Try reading from disk (local dev)
+  try {
+    const raw = await fs.readFile(WALLETS_FILE, 'utf-8');
+    return JSON.parse(raw) as WalletsFile;
+  } catch {
+    // 3. Safe fallback — return empty structure so callers don't crash
+    console.warn('⚠️ [walletService] wallets.json not found and WALLETS_JSON env not set. Using mock wallet structure.');
+    return {
+      walletSetId: 'mock-wallet-set',
+      walletSetName: 'Mock Wallets',
+      createdAt: new Date().toISOString(),
+      wallets: [],
+    } as WalletsFile;
+  }
 }
 
 export async function getWallet(agentName: string): Promise<AgentWallet | undefined> {
